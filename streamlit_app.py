@@ -266,23 +266,26 @@ def select_columns_from_unknown_source(df, needed_columns):
     columns = df.columns.tolist()
     available_columns_dict = {i+1: col for i, col in enumerate(columns)}
     available_name_of_needed_columns_dict = {}
-
+    
     st.write("Available columns:")
     for num, col in available_columns_dict.items():
         st.write(f"{num}: {col}")
-
+    
     for col in needed_columns:
-        available_column_number = st.number_input(f"Enter number for {col}", min_value=1, max_value=len(columns), step=1)
+        available_column_number = st.number_input(f"Enter number for {col} (0 if not found)", min_value=0, max_value=len(columns), step=1)
         if available_column_number > 0 and available_column_number <= len(available_columns_dict):
             available_name_of_needed_columns_dict[available_columns_dict[available_column_number]] = col
-
-    df = df[list(available_name_of_needed_columns_dict.keys())]
-    df = df.rename(columns=available_name_of_needed_columns_dict)
-
+    
+    if available_name_of_needed_columns_dict:
+        df = df[list(available_name_of_needed_columns_dict.keys())]
+        df = df.rename(columns=available_name_of_needed_columns_dict)
+    else:
+        df = pd.DataFrame()  # Create an empty DataFrame if no columns were selected
+    
     for col in needed_columns:
         if col not in df.columns:
             df[col] = np.nan
-
+    
     return df
 
 def select_columns_from_known_source(df, needed_columns, source):
@@ -435,71 +438,81 @@ def convert_df_to_csv(df):
 # Streamlit app
 def main():
     st.title("GST FILINGS AUTOMATION")
-
     uploaded_files = st.file_uploader("Choose Excel files", accept_multiple_files=True, type=['xlsx', 'xls'])
-
+    
     if uploaded_files:
         all_dataframes = []
-
         for uploaded_file in uploaded_files:
             st.write(f"Processing: {uploaded_file.name}")
             
             excel_file = pd.ExcelFile(uploaded_file)
             sheet_names = excel_file.sheet_names
-
             selected_sheets = st.multiselect(f"Select relevant sheets from {uploaded_file.name}", sheet_names)
-
+            
             for sheet in selected_sheets:
                 df = excel_file.parse(sheet)
-
                 is_known_source = st.checkbox(f"Is {sheet} from a known source?", key=f"{uploaded_file.name}_{sheet}_known")
-
+                
                 if is_known_source:
                     source = st.selectbox("Select the source", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
                     df = select_columns_from_known_source(df, needed_columns, source)
                 else:
                     df = select_columns_from_unknown_source(df, needed_columns)
-
-                df = format_place_of_supply(df)
-                all_dataframes.append(df)
-
-        main_df = pd.concat(all_dataframes)
-        main_df.reset_index(drop=True, inplace=True)
-
-        customer_state_code = st.selectbox("Select the state code of the customer", 
-                                           [state['code_number'] for state in state_codes])
-
-        customer_state = next((state['code'] for state in state_codes if state['code_number'] == customer_state_code), None)
-
-        main_df = fill_missing_values(main_df)
-        main_df = create_place_of_origin_column(main_df, customer_state)
-        main_df = fill_place_of_supply_with_place_of_origin(main_df)
-        main_df = categorise_transactions(main_df)
-
-        b2b = create_b2b_dataframe(main_df)
-        b2cs = create_b2cs_dataframe(main_df)
-        b2cl = create_b2cl_dataframe(main_df)
-
-        st.download_button(
-            label="Download B2B Output",
-            data=convert_df_to_csv(b2b),
-            file_name="b2b_output.csv",
-            mime="text/csv",
-        )
-
-        st.download_button(
-            label="Download B2CS Output",
-            data=convert_df_to_csv(b2cs),
-            file_name="b2cs_output.csv",
-            mime="text/csv",
-        )
-
-        st.download_button(
-            label="Download B2CL Output",
-            data=convert_df_to_csv(b2cl),
-            file_name="b2cl_output.csv",
-            mime="text/csv",
-        )
+                
+                if not df.empty:
+                    df = format_place_of_supply(df)
+                    all_dataframes.append(df)
+        
+        if all_dataframes:
+            main_df = pd.concat(all_dataframes)
+            main_df.reset_index(drop=True, inplace=True)
+            
+            customer_state_code = st.selectbox("Select the state code of the customer", 
+                                               [state['code_number'] for state in state_codes])
+            customer_state = next((state['code'] for state in state_codes if state['code_number'] == customer_state_code), None)
+            
+            main_df = fill_missing_values(main_df)
+            main_df = create_place_of_origin_column(main_df, customer_state)
+            main_df = fill_place_of_supply_with_place_of_origin(main_df)
+            main_df = categorise_transactions(main_df)
+            
+            b2b = create_b2b_dataframe(main_df)
+            b2cs = create_b2cs_dataframe(main_df)
+            b2cl = create_b2cl_dataframe(main_df)
+            
+            if not b2b.empty:
+                st.download_button(
+                    label="Download B2B Output",
+                    data=convert_df_to_csv(b2b),
+                    file_name="b2b_output.csv",
+                    mime="text/csv",
+                )
+            else:
+                st.write("No B2B transactions to download.")
+            
+            if not b2cs.empty:
+                st.download_button(
+                    label="Download B2CS Output",
+                    data=convert_df_to_csv(b2cs),
+                    file_name="b2cs_output.csv",
+                    mime="text/csv",
+                )
+            else:
+                st.write("No B2CS transactions to download.")
+            
+            if not b2cl.empty:
+                st.download_button(
+                    label="Download B2CL Output",
+                    data=convert_df_to_csv(b2cl),
+                    file_name="b2cl_output.csv",
+                    mime="text/csv",
+                )
+            else:
+                st.write("No B2CL transactions to download.")
+        else:
+            st.error("No valid data was processed from the uploaded files. Please check your input and try again.")
+    else:
+        st.write("Please upload Excel files to process.")
 
 if __name__ == "__main__":
     main()
