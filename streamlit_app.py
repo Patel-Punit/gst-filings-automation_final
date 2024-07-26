@@ -330,24 +330,83 @@ def format_place_of_supply(df):
     return df
 
 def fill_missing_values(df):
-    for index, row in df.iterrows():
-        invoice_value = row['Invoice Value'] if pd.notna(row['Invoice Value']) else 0
-        taxable_value = row['Taxable Value'] if pd.notna(row['Taxable Value']) else 0
-        tax_amount = row['Tax amount'] if pd.notna(row['Tax amount']) else 0
-        gst_rate = row['Rate'] if pd.notna(row['Rate']) else 0
-        cgst_rate = row['Cgst Rate'] if pd.notna(row['Cgst Rate']) else 0
-        sgst_rate = row['Sgst Rate'] if pd.notna(row['Sgst Rate']) else 0
-        igst_rate = row['Igst Rate'] if pd.notna(row['Igst Rate']) else 0
-        utgst_rate = row['Utgst Rate'] if pd.notna(row['Utgst Rate']) else 0
-        gst_rate_combined = cgst_rate + sgst_rate + igst_rate + utgst_rate
+  for index, row in df.iterrows():
 
-        if gst_rate == 0 and gst_rate_combined != 0:
-            gst_rate = gst_rate_combined
-            df.at[index, 'Rate'] = gst_rate
+    invoice_value = 0 if pd.isna(row['Invoice Value']) else row['Invoice Value']
+    taxable_value = 0 if pd.isna(row['Taxable Value']) else row['Taxable Value']
+    tax_amount = 0 if pd.isna(row['Tax amount']) else row['Tax amount']
+    gst_rate = 0 if pd.isna(row['Rate']) else row['Rate']
+    cgst_rate = 0 if pd.isna(row['Cgst Rate']) else row['Cgst Rate']
+    sgst_rate = 0 if pd.isna(row['Sgst Rate']) else row['Sgst Rate']
+    igst_rate = 0 if pd.isna(row['Igst Rate']) else row['Igst Rate']
+    utgst_rate = 0 if pd.isna(row['Utgst Rate']) else row['Utgst Rate']
+    gst_rate_combined = cgst_rate + sgst_rate + igst_rate + utgst_rate
 
-        # ... (include other conditions for filling missing values)
+    if gst_rate == 0 and gst_rate_combined != 0:
+      gst_rate = gst_rate_combined
+      df.at[index, 'Rate'] = gst_rate
 
-    return df
+    if invoice_value != 0 and gst_rate != 0 and taxable_value == 0:
+            taxable_value = invoice_value * 100 / (100 + gst_rate)
+            df.at[index, 'Taxable Value'] = taxable_value
+            continue
+
+    elif invoice_value != 0 and gst_rate == 0 and taxable_value != 0:
+        tax_amount = invoice_value - taxable_value
+        gst_rate = (tax_amount / taxable_value) * 100
+        df.at[index, 'Rate'] = gst_rate
+        continue
+
+    elif invoice_value != 0 and gst_rate == 0 and taxable_value == 0 and tax_amount != 0:
+        taxable_value = invoice_value - tax_amount
+        gst_rate = (tax_amount / taxable_value) * 100
+        df.at[index, 'Rate'] = gst_rate
+        df.at[index, 'Taxable Value'] = taxable_value
+        continue
+
+    elif invoice_value != 0 and gst_rate == 0 and taxable_value == 0 and gst_rate_combined != 0:
+        gst_rate = gst_rate_combined
+        taxable_value = invoice_value * 100 / (100 + gst_rate)
+        df.at[index, 'Rate'] = gst_rate
+        df.at[index, 'Taxable Value'] = taxable_value
+        continue
+
+    if invoice_value == 0 and gst_rate != 0 and taxable_value != 0:
+        invoice_value = taxable_value + (taxable_value * gst_rate / 100)
+        df.at[index, 'Invoice Value'] = invoice_value
+        continue
+
+    if invoice_value == 0 and gst_rate != 0 and taxable_value == 0 and tax_amount != 0:
+        taxable_value = tax_amount * 100 / gst_rate
+        invoice_value = taxable_value + tax_amount
+        df.at[index, 'Invoice Value'] = invoice_value
+        df.at[index, 'Taxable Value'] = taxable_value
+        continue
+
+    elif invoice_value == 0 and gst_rate == 0 and taxable_value != 0 and tax_amount != 0:
+        gst_rate = (tax_amount / taxable_value) * 100
+        invoice_value = taxable_value + tax_amount
+        df.at[index, 'Rate'] = gst_rate
+        df.at[index, 'Invoice Value'] = invoice_value
+        continue
+
+    elif invoice_value == 0 and gst_rate == 0 and taxable_value != 0 and tax_amount == 0 and gst_rate_combined != 0:
+        gst_rate = gst_rate_combined
+        invoice_value = taxable_value + (taxable_value * gst_rate / 100)
+        df.at[index, 'Rate'] = gst_rate
+        df.at[index, 'Invoice Value'] = invoice_value
+        continue
+
+    elif invoice_value == 0 and gst_rate == 0 and taxable_value == 0 and tax_amount != 0 and gst_rate_combined != 0:
+        gst_rate = gst_rate_combined
+        taxable_value = tax_amount * 100 / gst_rate
+        invoice_value = taxable_value + tax_amount
+        df.at[index, 'Rate'] = gst_rate
+        df.at[index, 'Taxable Value'] = taxable_value
+        df.at[index, 'Invoice Value'] = invoice_value
+        continue
+
+  return df
 
 def create_place_of_origin_column(df, customer_state):
     df['place_of_origin'] = np.nan
