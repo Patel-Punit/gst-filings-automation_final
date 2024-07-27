@@ -276,7 +276,7 @@ def select_columns_from_unknown_source(df, needed_columns):
         selected_col = st.selectbox(
             f"Select column for '{needed_col}'",
             options,
-            key=f"select_{needed_col}",
+            key=f"select_{needed_col}_{hash(df)}",
             help=f"Choose the column that corresponds to {needed_col}"
         )
         
