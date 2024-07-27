@@ -276,7 +276,7 @@ def select_columns_from_unknown_source(df, needed_columns):
         selected_col = st.selectbox(
             f"Select column for '{needed_col}'",
             options,
-            key=f"select_{needed_col}",
+            key=f"{file_name}_{sheet_name}_select_{needed_col}",
             help=f"Choose the column that corresponds to {needed_col}"
         )
         
@@ -632,7 +632,7 @@ def main():
                     source = st.selectbox("Select the source", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
                     df = select_columns_from_known_source(df, needed_columns, source)
                 else:
-                    df = select_columns_from_unknown_source(df, needed_columns)
+                    df = select_columns_from_unknown_source(df, needed_columns, uploaded_file.name, sheet)
                 
                 if not df.empty:
                     df = format_place_of_supply(df)
