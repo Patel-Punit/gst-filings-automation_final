@@ -264,24 +264,35 @@ needed_columns = [
 # Define necessary functions
 def select_columns_from_unknown_source(df, needed_columns):
     columns = df.columns.tolist()
-    available_columns_dict = {i+1: col for i, col in enumerate(columns)}
     available_name_of_needed_columns_dict = {}
     
-    st.write("Available columns:")
-    for num, col in available_columns_dict.items():
-        st.write(f"{num}: {col}")
+    st.write("Select the corresponding columns for each needed field:")
     
-    for col in needed_columns:
-        available_column_number = st.number_input(f"Enter number for {col} (0 if not found)", min_value=0, max_value=len(columns), step=1)
-        if available_column_number > 0 and available_column_number <= len(available_columns_dict):
-            available_name_of_needed_columns_dict[available_columns_dict[available_column_number]] = col
+    for needed_col in needed_columns:
+        # Add a "Not Available" option to the list of columns
+        options = ["Not Available"] + columns
+        
+        # Create a selectbox with search functionality for each needed column
+        selected_col = st.selectbox(
+            f"Select column for '{needed_col}'",
+            options,
+            key=f"select_{needed_col}",
+            help=f"Choose the column that corresponds to {needed_col}"
+        )
+        
+        # If a valid column is selected, add it to the dictionary
+        if selected_col != "Not Available":
+            available_name_of_needed_columns_dict[selected_col] = needed_col
     
     if available_name_of_needed_columns_dict:
+        # Select and rename the columns
         df = df[list(available_name_of_needed_columns_dict.keys())]
         df = df.rename(columns=available_name_of_needed_columns_dict)
     else:
-        df = pd.DataFrame()  # Create an empty DataFrame if no columns were selected
+        # Create an empty DataFrame if no columns were selected
+        df = pd.DataFrame()
     
+    # Add missing columns with NaN values
     for col in needed_columns:
         if col not in df.columns:
             df[col] = np.nan
