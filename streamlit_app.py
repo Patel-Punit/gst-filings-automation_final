@@ -507,11 +507,56 @@ def create_b2b_dataframe(df):
     return b2b[b2b_columns_needed]
 
 def create_b2cs_dataframe(df):
-    b2cs = df[df['transaction_type'] == 'b2cs']
+    b2cs = df[df['transaction_type'] == 'b2cs'].copy()
     b2cs['Type'] = 'b2cs'
     b2cs['Applicable % of Tax Rate'] = np.nan
     b2cs['E-Commerce GSTIN'] = np.nan
     
+    # Group by 'Place Of Supply' and 'Rate', but don't aggregate yet
+    grouped = b2cs.groupby(['Place Of Supply', 'Rate'])
+    
+    # Identify groups with negative Taxable Value
+    negative_groups = grouped['Taxable Value'].sum()[grouped['Taxable Value'].sum() < 0].reset_index()
+    
+    if not negative_groups.empty:
+        st.markdown(
+            """
+            <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
+                <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Taxable Value Detected in B2CS Groups</h3>
+                <p style="font-weight: bold;">Some state and rate combinations have a negative total Taxable Value in B2CS transactions.</p>
+                <p>These groups have been excluded from the B2CS summary. Please review and handle these transactions manually.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        st.markdown("### Excluded B2CS Groups:")
+        st.dataframe(negative_groups, use_container_width=True)
+        
+        # Get all transactions from the negative groups
+        negative_transactions = pd.DataFrame()
+        for _, row in negative_groups.iterrows():
+            group_transactions = b2cs[(b2cs['Place Of Supply'] == row['Place Of Supply']) & 
+                                      (b2cs['Rate'] == row['Rate'])]
+            negative_transactions = pd.concat([negative_transactions, group_transactions])
+        
+        st.markdown("### All Transactions from Excluded Groups:")
+        st.dataframe(negative_transactions, use_container_width=True)
+        
+        # Add a download button for excluded transactions
+        csv = negative_transactions.to_csv(index=False)
+        st.download_button(
+            label="Download Excluded B2CS Transactions",
+            data=csv,
+            file_name="excluded_b2cs_transactions.csv",
+            mime="text/csv",
+        )
+        
+        # Remove negative groups from b2cs DataFrame
+        b2cs = b2cs[~((b2cs['Place Of Supply'].isin(negative_groups['Place Of Supply'])) & 
+                      (b2cs['Rate'].isin(negative_groups['Rate'])))]
+    
+    # Now perform the aggregation on the filtered data
     b2cs = b2cs.groupby(['Place Of Supply', 'Rate'])[['Taxable Value', 'Cess Amount']].sum().reset_index()
     
     b2cs_columns_needed = ['Type', 'Place Of Supply', 'Applicable % of Tax Rate', 'Rate', 'Taxable Value', 'Cess Amount', 'E-Commerce GSTIN']
