@@ -526,9 +526,39 @@ def create_b2cl_dataframe(df):
     b2cl_columns_needed = ['Invoice Number', 'Invoice Date', 'Invoice Value', 'Place Of Supply',
                            'Applicable % of Tax Rate', 'Rate', 'Taxable Value', 'Cess Amount', 'E-Commerce GSTIN']
     
+    # Ensure all needed columns exist
     for col in b2cl_columns_needed:
         if col not in b2cl.columns:
             b2cl[col] = np.nan
+    
+    # Filter out rows with negative Taxable Value or Invoice Value
+    negative_transactions = b2cl[(b2cl['Taxable Value'] < 0) | (b2cl['Invoice Value'] < 0)]
+    b2cl = b2cl[(b2cl['Taxable Value'] >= 0) & (b2cl['Invoice Value'] >= 0)]
+    
+    # Notify user about excluded transactions with a prominent warning
+    if not negative_transactions.empty:
+        st.markdown(
+            """
+            <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
+                <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Value Transactions Detected in B2CL</h3>
+                <p style="font-weight: bold;">Some transactions with negative Taxable Value or Invoice Value were excluded from B2CL.</p>
+                <p>Please handle these transactions manually. See details below.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        st.markdown("### Excluded B2CL Transactions:")
+        st.dataframe(negative_transactions[b2cl_columns_needed], use_container_width=True)
+        
+        # Add a download button for excluded transactions
+        csv = negative_transactions[b2cl_columns_needed].to_csv(index=False)
+        st.download_button(
+            label="Download Excluded B2CL Transactions",
+            data=csv,
+            file_name="excluded_b2cl_transactions.csv",
+            mime="text/csv",
+        )
     
     return b2cl[b2cl_columns_needed]
 
