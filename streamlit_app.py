@@ -4,7 +4,7 @@ import numpy as np
 from io import BytesIO
 
 # Define necessary data structures
-known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b summary format','b2cs summary format']
+known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho']
 
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
@@ -19,21 +19,6 @@ known_source_relevenat_columns = {
           'SubTotal' : 'Taxable Value',
           'Item Tax Amount' : 'Tax amount',
           'GST Treatment' : 'GST treatment'
-      },
-      'b2b summary format': {
-          'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
-          'Customer Name' : 'Receiver Name',
-          'Invoice Number' : 'Invoice Number',
-          'Invoice Date' : 'Invoice Date',
-          'Invoice Value' : 'Invoice Value',
-          'Place Of Supply' : 'Place Of Supply',
-          'Rate' : 'Rate',
-          'Taxable Value' : 'Taxable Value'
-      },
-      'b2cs summary format': {
-          'Place Of Supply' : 'Place Of Supply',
-          'Rate' : 'Rate',
-          'Taxable Value' : 'Taxable Value'
       },
       'Kithab Sales Report': {
           'GSTIN Number' : 'GSTIN/UIN of Recipient',
