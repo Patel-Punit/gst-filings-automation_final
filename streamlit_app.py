@@ -22,9 +22,9 @@ known_source_relevenat_columns = {
       },
       'b2b summary format': {
           'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
-          'Customer Name' : 'Receiver Name',
+          'Receiver Name' : 'Receiver Name',
           'Invoice Number' : 'Invoice Number',
-          'Invoice Date' : 'Invoice Date',
+          'Invoice date' : 'Invoice date',
           'Invoice Value' : 'Invoice Value',
           'Place Of Supply' : 'Place Of Supply',
           'Rate' : 'Rate',
