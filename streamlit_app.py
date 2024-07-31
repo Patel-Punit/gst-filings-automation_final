@@ -373,7 +373,6 @@ def select_columns_from_known_source(df, needed_columns, source):
 
         df = pd.concat([gst_df, state_df], ignore_index=True)
 
-
     available_name_of_needed_columns_dict = known_source_relevenat_columns[source]
     columns_to_keep = list(available_name_of_needed_columns_dict.keys())
     df = df[columns_to_keep]
@@ -750,8 +749,8 @@ def main():
             main_df.reset_index(drop=True, inplace=True)
             
             customer_state_code = st.selectbox("Select the state code of the supplier", 
-                                               [state['code_number'] for state in state_codes])
-            customer_state = next((state['code'] for state in state_codes if state['code_number'] == customer_state_code), None)
+                                               [state['code'] for state in state_codes])
+            customer_state = customer_state_code
             
             main_df = fill_missing_values(main_df)
             main_df = create_place_of_origin_column(main_df, customer_state)
