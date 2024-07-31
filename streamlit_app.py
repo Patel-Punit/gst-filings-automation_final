@@ -754,15 +754,24 @@ def main():
             main_df = fill_place_of_supply_with_place_of_origin(main_df)
             main_df = categorise_transactions(main_df)
 
+            main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
+
             unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
+            print(unique_gstins)
             
             for gstin in unique_gstins:
+                print(gstin)
+                print('')
+                print('')
                 st.write(f"### Summary for GSTIN: {gstin}")
                 gstin_df = main_df[main_df['GSTIN/UIN of Supplier'] == gstin]
+                print(gstin_df)
                 
                 b2b = create_b2b_dataframe(gstin_df)
                 b2cs = create_b2cs_dataframe(gstin_df)
                 b2cl = create_b2cl_dataframe(gstin_df)
+
+                print(b2b)
                 
                 if not b2b.empty:
                     st.download_button(
