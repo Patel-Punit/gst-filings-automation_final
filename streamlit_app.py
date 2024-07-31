@@ -2,9 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
+import io
+
 
 # Define necessary data structures
-known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format']
+known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B']
 #  test
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
@@ -19,6 +21,33 @@ known_source_relevenat_columns = {
           'SubTotal' : 'Taxable Value',
           'Item Tax Amount' : 'Tax amount',
           'GST Treatment' : 'GST treatment'
+      },
+      'Amazon B2B': {
+          'Customer Bill To Gstid' : 'GSTIN/UIN of Recipient',
+          'Buyer Name' : 'Receiver Name',
+          'Seller Gstin' : 'GSTIN/UIN of Supplier',
+          'Invoice Number' : 'Invoice Number',
+          'Invoice Date' : 'Invoice Date',
+          'Principal Amount' : 'Invoice Value',
+          'Ship To State' : 'Place Of Supply',
+          'Principal Amount Basis' : 'Taxable Value',
+          'Cgst Rate' : 'Cgst Rate',
+          'Sgst Rate' : 'Sgst Rate',
+          'Utgst Rate' : 'Utgst Rate',
+          'Igst Rate' : 'Igst Rate'
+      },
+      'VS internal format': {
+          'GST Identification Number (GSTIN)' : 'gst',
+          'Customer Name' : 'Receiver Name',
+          'Invoice Number' : 'Invoice No',
+          'Invoice Date' : 'Date',
+          'Total' : 'Invoice Total (Rs.)',
+          'Place of Supply(With State Code)' : 'state',
+          'Item Tax %' : 'Rate of tax (%)',
+          'SubTotal' : 'Invoice Base Amount (Rs.)',
+          'Cgst Rate' : 'CGST (Rs.)',
+          'Sgst Rate' : 'SGST (Rs.)',
+          'Igst Rate' : 'IGST (Rs.)'
       },
       'b2b ready to file format': {
           'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
@@ -655,10 +684,36 @@ def create_b2cl_dataframe(df):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
+#convert to excel
+def convert_csv_to_excel(csv_file):
+    df = pd.read_csv(csv_file)
+    output = io.BytesIO()
+    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    df.to_excel(writer, index=False, sheet_name='Sheet1')
+    writer.close()
+    processed_data = output.getvalue()
+    return processed_data
+
 # Streamlit app
 def main():
     st.title("GST FILINGS AUTOMATION")
     uploaded_files = st.file_uploader("Choose Excel or CSV files", accept_multiple_files=True, type=['xlsx', 'xls', 'csv'])
+    # List to store the processed files
+    processed_files = []
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            if uploaded_file.name.endswith('.csv'):
+            # Convert CSV to Excel
+                processed_data = convert_csv_to_excel(uploaded_file)
+            # Create a new file object for the converted Excel file
+                processed_file = io.BytesIO(processed_data)
+                processed_file.name = uploaded_file.name.replace('.csv', '.xlsx')
+                processed_files.append(processed_file)
+            else:
+            # Keep the original Excel file
+                processed_files.append(uploaded_file)
+
+    uploaded_files = processed_files
     
     if uploaded_files:
         all_dataframes = []
@@ -672,10 +727,10 @@ def main():
                 
                 for sheet in selected_sheets:
                     df = excel_file.parse(sheet)
-                    is_known_source = st.checkbox(f"Is {sheet} from a known source?", key=f"{uploaded_file.name}_{sheet}_known")
+                    is_known_source = st.checkbox(f"Is {sheet} from a known format?", key=f"{uploaded_file.name}_{sheet}_known")
                     
                     if is_known_source:
-                        source = st.selectbox("Select the source", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
+                        source = st.selectbox("Select the format", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
                         df = select_columns_from_known_source(df, needed_columns, source)
                     else:
                         df = select_columns_from_unknown_source(df, needed_columns, uploaded_file.name, sheet)
@@ -684,25 +739,13 @@ def main():
                         df = format_place_of_supply(df)
                         all_dataframes.append(df)
             
-            elif uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-                is_known_source = st.checkbox(f"Is {uploaded_file.name} from a known source?", key=f"{uploaded_file.name}_known")
-                
-                if is_known_source:
-                    source = st.selectbox("Select the source", known_sources, key=f"{uploaded_file.name}_source")
-                    df = select_columns_from_known_source(df, needed_columns, source)
-                else:
-                    df = select_columns_from_unknown_source(df, needed_columns, uploaded_file.name)
-                
-                if not df.empty:
-                    df = format_place_of_supply(df)
-                    all_dataframes.append(df)
+        
         
         if all_dataframes:
             main_df = pd.concat(all_dataframes)
             main_df.reset_index(drop=True, inplace=True)
             
-            customer_state_code = st.selectbox("Select the state code of the customer", 
+            customer_state_code = st.selectbox("Select the state code of the supplier", 
                                                [state['code_number'] for state in state_codes])
             customer_state = next((state['code'] for state in state_codes if state['code_number'] == customer_state_code), None)
             
@@ -710,40 +753,46 @@ def main():
             main_df = create_place_of_origin_column(main_df, customer_state)
             main_df = fill_place_of_supply_with_place_of_origin(main_df)
             main_df = categorise_transactions(main_df)
+
+            unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
             
-            b2b = create_b2b_dataframe(main_df)
-            b2cs = create_b2cs_dataframe(main_df)
-            b2cl = create_b2cl_dataframe(main_df)
-            
-            if not b2b.empty:
-                st.download_button(
-                    label="Download B2B Output",
-                    data=convert_df_to_csv(b2b),
-                    file_name="b2b_output.csv",
-                    mime="text/csv",
-                )
-            else:
-                st.write("No B2B transactions to download.")
-            
-            if not b2cs.empty:
-                st.download_button(
-                    label="Download B2CS Output",
-                    data=convert_df_to_csv(b2cs),
-                    file_name="b2cs_output.csv",
-                    mime="text/csv",
-                )
-            else:
-                st.write("No B2CS transactions to download.")
-            
-            if not b2cl.empty:
-                st.download_button(
-                    label="Download B2CL Output",
-                    data=convert_df_to_csv(b2cl),
-                    file_name="b2cl_output.csv",
-                    mime="text/csv",
-                )
-            else:
-                st.write("No B2CL transactions to download.")
+            for gstin in unique_gstins:
+                st.write(f"### Summary for GSTIN: {gstin}")
+                gstin_df = main_df[main_df['GSTIN/UIN of Supplier'] == gstin]
+                
+                b2b = create_b2b_dataframe(gstin_df)
+                b2cs = create_b2cs_dataframe(gstin_df)
+                b2cl = create_b2cl_dataframe(gstin_df)
+                
+                if not b2b.empty:
+                    st.download_button(
+                        label=f"Download B2B Output for {gstin}",
+                        data=convert_df_to_csv(b2b),
+                        file_name=f"b2b_output_{gstin}.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    st.write(f"No B2B transactions to download for GSTIN: {gstin}.")
+                
+                if not b2cs.empty:
+                    st.download_button(
+                        label=f"Download B2CS Output for {gstin}",
+                        data=convert_df_to_csv(b2cs),
+                        file_name=f"b2cs_output_{gstin}.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    st.write(f"No B2CS transactions to download for GSTIN: {gstin}.")
+                
+                if not b2cl.empty:
+                    st.download_button(
+                        label=f"Download B2CL Output for {gstin}",
+                        data=convert_df_to_csv(b2cl),
+                        file_name=f"b2cl_output_{gstin}.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    st.write(f"No B2CL transactions to download for GSTIN: {gstin}.")
         else:
             st.error("No valid data was processed from the uploaded files. Please check your input and try again.")
     else:
