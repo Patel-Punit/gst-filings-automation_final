@@ -8,7 +8,7 @@ import tempfile
 
 
 # Define necessary data structures
-known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B']
+known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
 #  test
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
@@ -23,6 +23,14 @@ known_source_relevenat_columns = {
           'SubTotal' : 'Taxable Value',
           'Item Tax Amount' : 'Tax amount',
           'GST Treatment' : 'GST treatment'
+      },
+      'Jio Mart': {
+          'Seller GSTIN' : 'GSTIN/UIN of Supplier',
+          "Customer's Delivery State" : 'Place Of Supply',
+          'CGST Rate' : 'Cgst Rate',
+          'SGST Rate' : 'Sgst Rate',
+          'IGST Rate' : 'Igst Rate',
+          'Taxable Value (Final Invoice Amount -Taxes)' : 'Taxable Value'
       },
       'Amazon B2B': {
           'Customer Bill To Gstid' : 'GSTIN/UIN of Recipient',
@@ -374,6 +382,14 @@ def select_columns_from_known_source(df, needed_columns, source):
         state_df['gstin'] = np.nan
 
         df = pd.concat([gst_df, state_df], ignore_index=True)
+
+    if source == 'b2b ready to file format':
+        df = df[3:]
+        df.columns = ['GSTIN/UIN of Recipient', 'Receiver Name',    'Invoice Number',    'Invoice date', 'Invoice Value', 'Place Of Supply',  'Reverse Charge',   'Applicable % of Tax Rate', 'Invoice Type', 'E-Commerce GSTIN', 'Rate', 'Taxable Value' ,'Cess Amount']
+
+    if source == 'b2cs ready to file format':
+        df = df[3:]
+        df.columns = ['Type',	'Place Of Supply',	'Applicable % of Tax Rate',	'Rate',	'Taxable Value',	'Cess Amount',	'E-Commerce GSTIN']
 
     available_name_of_needed_columns_dict = known_source_relevenat_columns[source]
     columns_to_keep = list(available_name_of_needed_columns_dict.keys())
