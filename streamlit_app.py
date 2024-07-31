@@ -427,8 +427,12 @@ def fill_missing_values(df):
     utgst_rate = 0 if pd.isna(row['Utgst Rate']) else row['Utgst Rate']
     gst_rate_combined = cgst_rate + sgst_rate + igst_rate + utgst_rate
 
-    if gst_rate == 0 and gst_rate_combined != 0:
+    if gst_rate == 0 and (cgst_rate!=0 or sgst_rate!=0 or igst_rate!=0 or utgst_rate!=0):
       gst_rate = gst_rate_combined
+      df.at[index, 'Rate'] = gst_rate
+
+    elif gst_rate == 0 and (cgst_rate==0 and sgst_rate==0 and igst_rate==0 and utgst_rate==0):
+      gst_rate = 0
       df.at[index, 'Rate'] = gst_rate
 
     if invoice_value != 0 and gst_rate != 0 and taxable_value == 0:
@@ -757,21 +761,15 @@ def main():
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
 
             unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
-            print(unique_gstins)
             
             for gstin in unique_gstins:
-                print(gstin)
-                print('')
-                print('')
+
                 st.write(f"### Summary for GSTIN: {gstin}")
                 gstin_df = main_df[main_df['GSTIN/UIN of Supplier'] == gstin]
-                print(gstin_df)
                 
                 b2b = create_b2b_dataframe(gstin_df)
                 b2cs = create_b2cs_dataframe(gstin_df)
                 b2cl = create_b2cl_dataframe(gstin_df)
-
-                print(b2b)
                 
                 if not b2b.empty:
                     st.download_button(
