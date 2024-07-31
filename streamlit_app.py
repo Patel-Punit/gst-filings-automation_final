@@ -1,8 +1,10 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
 import io
+import tempfile
 
 
 # Define necessary data structures
@@ -28,32 +30,32 @@ known_source_relevenat_columns = {
           'Seller Gstin' : 'GSTIN/UIN of Supplier',
           'Invoice Number' : 'Invoice Number',
           'Invoice Date' : 'Invoice Date',
-          'Principal Amount' : 'Invoice Value',
+          'Invoice Amount' : 'Invoice Value',
           'Ship To State' : 'Place Of Supply',
-          'Principal Amount Basis' : 'Taxable Value',
+          'Tax Exclusive Gross' : 'Taxable Value',
           'Cgst Rate' : 'Cgst Rate',
           'Sgst Rate' : 'Sgst Rate',
           'Utgst Rate' : 'Utgst Rate',
           'Igst Rate' : 'Igst Rate'
       },
       'VS internal format': {
-          'GST Identification Number (GSTIN)' : 'gst',
+          'gst' : 'GSTIN/UIN of Recipient',
           'Customer Name' : 'Receiver Name',
-          'Invoice Number' : 'Invoice No',
-          'Invoice Date' : 'Date',
-          'Total' : 'Invoice Total (Rs.)',
-          'Place of Supply(With State Code)' : 'state',
-          'Item Tax %' : 'Rate of tax (%)',
-          'SubTotal' : 'Invoice Base Amount (Rs.)',
-          'Cgst Rate' : 'CGST (Rs.)',
-          'Sgst Rate' : 'SGST (Rs.)',
-          'Igst Rate' : 'IGST (Rs.)'
+          'Invoice No' : 'Invoice Number',
+          'Invoice Date' : 'Invoice Date',
+          'Invoice Total (Rs.)' : 'Invoice Value',
+          'state' : 'Place Of Supply',
+          'Rate of tax (%)' : 'Rate',
+          'Invoice Base Amount (Rs.)' : 'Taxable Value',
+          'CGST (Rs.)' : 'Cgst Rate',
+          'SGST (Rs.)' : 'Sgst Rate',
+          'IGST (Rs.)' : 'Igst Rate'
       },
       'b2b ready to file format': {
           'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
           'Receiver Name' : 'Receiver Name',
           'Invoice Number' : 'Invoice Number',
-          'Invoice date' : 'Invoice date',
+          'Invoice date' : 'Invoice Date',
           'Invoice Value' : 'Invoice Value',
           'Place Of Supply' : 'Place Of Supply',
           'Rate' : 'Rate',
@@ -426,6 +428,12 @@ def fill_missing_values(df):
     utgst_rate = 0 if pd.isna(row['Utgst Rate']) else row['Utgst Rate']
     gst_rate_combined = cgst_rate + sgst_rate + igst_rate + utgst_rate
 
+    if gst_rate >= -0.4 and gst_rate <= 0.4:
+        gst_rate = gst_rate*100
+
+    if gst_rate_combined >= -0.4 and gst_rate_combined <= 0.4:
+        gst_rate_combined = gst_rate_combined*100
+
     if gst_rate == 0 and (cgst_rate!=0 or sgst_rate!=0 or igst_rate!=0 or utgst_rate!=0):
       gst_rate = gst_rate_combined
       df.at[index, 'Rate'] = gst_rate
@@ -552,34 +560,34 @@ def create_b2b_dataframe(df):
         if col not in b2b.columns:
             b2b[col] = np.nan
     
-    # Filter out rows with negative Taxable Value or Invoice Value
-    negative_transactions = b2b[(b2b['Taxable Value'] < 0) | (b2b['Invoice Value'] < 0)]
-    b2b = b2b[(b2b['Taxable Value'] >= 0) & (b2b['Invoice Value'] >= 0)]
+    # # Filter out rows with negative Taxable Value or Invoice Value
+    # negative_transactions = b2b[(b2b['Taxable Value'] < 0) | (b2b['Invoice Value'] < 0)]
+    # b2b = b2b[(b2b['Taxable Value'] >= 0) & (b2b['Invoice Value'] >= 0)]
     
-    # Notify user about excluded transactions with a prominent warning
-    if not negative_transactions.empty:
-        st.markdown(
-            """
-            <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
-                <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Value Transactions Detected</h3>
-                <p style="font-weight: bold;">Some transactions with negative Taxable Value or Invoice Value were excluded from B2B.</p>
-                <p>Please handle these transactions manually. See details below.</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    # # Notify user about excluded transactions with a prominent warning
+    # if not negative_transactions.empty:
+    #     st.markdown(
+    #         """
+    #         <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
+    #             <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Value Transactions Detected</h3>
+    #             <p style="font-weight: bold;">Some transactions with negative Taxable Value or Invoice Value were excluded from B2B.</p>
+    #             <p>Please handle these transactions manually. See details below.</p>
+    #         </div>
+    #         """,
+    #         unsafe_allow_html=True
+    #     )
         
-        st.markdown("### Excluded Transactions:")
-        st.dataframe(negative_transactions[b2b_columns_needed], use_container_width=True)
+    #     st.markdown("### Excluded Transactions:")
+    #     st.dataframe(negative_transactions[b2b_columns_needed], use_container_width=True)
         
-        # Add a download button for excluded transactions
-        csv = negative_transactions[b2b_columns_needed].to_csv(index=False)
-        st.download_button(
-            label="Download Excluded Transactions",
-            data=csv,
-            file_name="excluded_b2b_transactions.csv",
-            mime="text/csv",
-        )
+    #     # Add a download button for excluded transactions
+    #     csv = negative_transactions[b2b_columns_needed].to_csv(index=False)
+    #     st.download_button(
+    #         label="Download Excluded Transactions",
+    #         data=csv,
+    #         file_name="excluded_b2b_transactions.csv",
+    #         mime="text/csv",
+    #     )
     
     return b2b[b2b_columns_needed]
 
@@ -589,49 +597,49 @@ def create_b2cs_dataframe(df):
     b2cs['Applicable % of Tax Rate'] = np.nan
     b2cs['E-Commerce GSTIN'] = np.nan
     
-    # Group by 'Place Of Supply' and 'Rate', but don't aggregate yet
-    grouped = b2cs.groupby(['Place Of Supply', 'Rate'])
+    # # Group by 'Place Of Supply' and 'Rate', but don't aggregate yet
+    # grouped = b2cs.groupby(['Place Of Supply', 'Rate'])
     
-    # Identify groups with negative Taxable Value
-    negative_groups = grouped['Taxable Value'].sum()[grouped['Taxable Value'].sum() < 0].reset_index()
+    # # Identify groups with negative Taxable Value
+    # negative_groups = grouped['Taxable Value'].sum()[grouped['Taxable Value'].sum() < 0].reset_index()
     
-    if not negative_groups.empty:
-        st.markdown(
-            """
-            <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
-                <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Taxable Value Detected in B2CS Groups</h3>
-                <p style="font-weight: bold;">Some state and rate combinations have a negative total Taxable Value in B2CS transactions.</p>
-                <p>These groups have been excluded from the B2CS summary. Please review and handle these transactions manually.</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    # if not negative_groups.empty:
+    #     st.markdown(
+    #         """
+    #         <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
+    #             <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Taxable Value Detected in B2CS Groups</h3>
+    #             <p style="font-weight: bold;">Some state and rate combinations have a negative total Taxable Value in B2CS transactions.</p>
+    #             <p>These groups have been excluded from the B2CS summary. Please review and handle these transactions manually.</p>
+    #         </div>
+    #         """,
+    #         unsafe_allow_html=True
+    #     )
         
-        st.markdown("### Excluded B2CS Groups:")
-        st.dataframe(negative_groups, use_container_width=True)
+    #     st.markdown("### Excluded B2CS Groups:")
+    #     st.dataframe(negative_groups, use_container_width=True)
         
-        # Get all transactions from the negative groups
-        negative_transactions = pd.DataFrame()
-        for _, row in negative_groups.iterrows():
-            group_transactions = b2cs[(b2cs['Place Of Supply'] == row['Place Of Supply']) & 
-                                      (b2cs['Rate'] == row['Rate'])]
-            negative_transactions = pd.concat([negative_transactions, group_transactions])
+    #     # Get all transactions from the negative groups
+    #     negative_transactions = pd.DataFrame()
+    #     for _, row in negative_groups.iterrows():
+    #         group_transactions = b2cs[(b2cs['Place Of Supply'] == row['Place Of Supply']) & 
+    #                                   (b2cs['Rate'] == row['Rate'])]
+    #         negative_transactions = pd.concat([negative_transactions, group_transactions])
         
-        st.markdown("### All Transactions from Excluded Groups:")
-        st.dataframe(negative_transactions, use_container_width=True)
+    #     st.markdown("### All Transactions from Excluded Groups:")
+    #     st.dataframe(negative_transactions, use_container_width=True)
         
-        # Add a download button for excluded transactions
-        csv = negative_transactions.to_csv(index=False)
-        st.download_button(
-            label="Download Excluded B2CS Transactions",
-            data=csv,
-            file_name="excluded_b2cs_transactions.csv",
-            mime="text/csv",
-        )
+    #     # Add a download button for excluded transactions
+    #     csv = negative_transactions.to_csv(index=False)
+    #     st.download_button(
+    #         label="Download Excluded B2CS Transactions",
+    #         data=csv,
+    #         file_name="excluded_b2cs_transactions.csv",
+    #         mime="text/csv",
+    #     )
         
-        # Remove negative groups from b2cs DataFrame
-        b2cs = b2cs[~((b2cs['Place Of Supply'].isin(negative_groups['Place Of Supply'])) & 
-                      (b2cs['Rate'].isin(negative_groups['Rate'])))]
+    #     # Remove negative groups from b2cs DataFrame
+    #     b2cs = b2cs[~((b2cs['Place Of Supply'].isin(negative_groups['Place Of Supply'])) & 
+                    #   (b2cs['Rate'].isin(negative_groups['Rate'])))]
     
     # Now perform the aggregation on the filtered data
     b2cs = b2cs.groupby(['Place Of Supply', 'Rate'])[['Taxable Value', 'Cess Amount']].sum().reset_index()
@@ -653,34 +661,34 @@ def create_b2cl_dataframe(df):
         if col not in b2cl.columns:
             b2cl[col] = np.nan
     
-    # Filter out rows with negative Taxable Value or Invoice Value
-    negative_transactions = b2cl[(b2cl['Taxable Value'] < 0) | (b2cl['Invoice Value'] < 0)]
-    b2cl = b2cl[(b2cl['Taxable Value'] >= 0) & (b2cl['Invoice Value'] >= 0)]
+    # # Filter out rows with negative Taxable Value or Invoice Value
+    # negative_transactions = b2cl[(b2cl['Taxable Value'] < 0) | (b2cl['Invoice Value'] < 0)]
+    # b2cl = b2cl[(b2cl['Taxable Value'] >= 0) & (b2cl['Invoice Value'] >= 0)]
     
-    # Notify user about excluded transactions with a prominent warning
-    if not negative_transactions.empty:
-        st.markdown(
-            """
-            <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
-                <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Value Transactions Detected in B2CL</h3>
-                <p style="font-weight: bold;">Some transactions with negative Taxable Value or Invoice Value were excluded from B2CL.</p>
-                <p>Please handle these transactions manually. See details below.</p>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    # # Notify user about excluded transactions with a prominent warning
+    # if not negative_transactions.empty:
+    #     st.markdown(
+    #         """
+    #         <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
+    #             <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Value Transactions Detected in B2CL</h3>
+    #             <p style="font-weight: bold;">Some transactions with negative Taxable Value or Invoice Value were excluded from B2CL.</p>
+    #             <p>Please handle these transactions manually. See details below.</p>
+    #         </div>
+    #         """,
+    #         unsafe_allow_html=True
+    #     )
         
-        st.markdown("### Excluded B2CL Transactions:")
-        st.dataframe(negative_transactions[b2cl_columns_needed], use_container_width=True)
+    #     st.markdown("### Excluded B2CL Transactions:")
+    #     st.dataframe(negative_transactions[b2cl_columns_needed], use_container_width=True)
         
-        # Add a download button for excluded transactions
-        csv = negative_transactions[b2cl_columns_needed].to_csv(index=False)
-        st.download_button(
-            label="Download Excluded B2CL Transactions",
-            data=csv,
-            file_name="excluded_b2cl_transactions.csv",
-            mime="text/csv",
-        )
+    #     # Add a download button for excluded transactions
+    #     csv = negative_transactions[b2cl_columns_needed].to_csv(index=False)
+    #     st.download_button(
+    #         label="Download Excluded B2CL Transactions",
+    #         data=csv,
+    #         file_name="excluded_b2cl_transactions.csv",
+    #         mime="text/csv",
+    #     )
     
     return b2cl[b2cl_columns_needed]
 
@@ -697,30 +705,64 @@ def convert_csv_to_excel(csv_file):
     processed_data = output.getvalue()
     return processed_data
 
+def process_meesho_files(uploaded_files):
+    file_names = [file.name for file in uploaded_files]
+    
+    if 'ForwardReports.xlsx' in file_names and 'Reverse.xlsx' in file_names:
+        forward_df = pd.read_excel([file for file in uploaded_files if file.name == 'ForwardReports.xlsx'][0])
+        reverse_df = pd.read_excel([file for file in uploaded_files if file.name == 'Reverse.xlsx'][0])
+
+        columns_to_keep = ['gst_rate', 'tcs_taxable_amount', 'end_customer_state_new','gstin']
+        forward_df = forward_df[columns_to_keep]
+        reverse_df = reverse_df[columns_to_keep]
+
+        reverse_df['tcs_taxable_amount'] *= -1
+
+        combined_df = pd.concat([forward_df, reverse_df], ignore_index=True)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            combined_df.to_excel(tmp.name, index=False, engine='openpyxl')
+            tmp_path = tmp.name
+
+        with open(tmp_path, 'rb') as file:
+            output = io.BytesIO(file.read())
+
+        os.unlink(tmp_path)
+
+        new_uploaded_files = [file for file in uploaded_files if file.name not in ['ForwardReports.xlsx', 'Reverse.xlsx']]
+        new_uploaded_files.append(('MeeshoForwardReverse.xlsx', output))
+
+        return new_uploaded_files
+    
+    return uploaded_files
+
 # Streamlit app
 def main():
     st.title("GST FILINGS AUTOMATION")
+    
     uploaded_files = st.file_uploader("Choose Excel or CSV files", accept_multiple_files=True, type=['xlsx', 'xls', 'csv'])
-    # List to store the processed files
-    processed_files = []
-    if uploaded_files:
-        for uploaded_file in uploaded_files:
-            if uploaded_file.name.endswith('.csv'):
-            # Convert CSV to Excel
-                processed_data = convert_csv_to_excel(uploaded_file)
-            # Create a new file object for the converted Excel file
-                processed_file = io.BytesIO(processed_data)
-                processed_file.name = uploaded_file.name.replace('.csv', '.xlsx')
-                processed_files.append(processed_file)
-            else:
-            # Keep the original Excel file
-                processed_files.append(uploaded_file)
-
-    uploaded_files = processed_files
     
     if uploaded_files:
+        uploaded_files = process_meesho_files(uploaded_files)
+
+        processed_files = []
+        for file in uploaded_files:
+            if isinstance(file, tuple):  # Combined Meesho file
+                file_name, file_content = file
+                file_obj = io.BytesIO(file_content.getvalue())
+                file_obj.name = file_name
+                processed_files.append(file_obj)
+            else:  # Original UploadedFile
+                if file.name.endswith('.csv'):
+                    processed_data = convert_csv_to_excel(file)
+                    processed_file = io.BytesIO(processed_data)
+                    processed_file.name = file.name.replace('.csv', '.xlsx')
+                    processed_files.append(processed_file)
+                else:
+                    processed_files.append(file)
+
         all_dataframes = []
-        for uploaded_file in uploaded_files:
+        for uploaded_file in processed_files:
             st.write(f"Processing: {uploaded_file.name}")
             
             if uploaded_file.name.endswith(('.xlsx', '.xls')):
@@ -741,19 +783,16 @@ def main():
                     if not df.empty:
                         df = format_place_of_supply(df)
                         all_dataframes.append(df)
-            
-        
-        
+
         if all_dataframes:
             main_df = pd.concat(all_dataframes)
             main_df.reset_index(drop=True, inplace=True)
             
             customer_state_code = st.selectbox("Select the state code of the supplier", 
                                                [state['code'] for state in state_codes])
-            customer_state = customer_state_code
             
             main_df = fill_missing_values(main_df)
-            main_df = create_place_of_origin_column(main_df, customer_state)
+            main_df = create_place_of_origin_column(main_df, customer_state_code)
             main_df = fill_place_of_supply_with_place_of_origin(main_df)
             main_df = categorise_transactions(main_df)
 
@@ -762,7 +801,6 @@ def main():
             unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
             
             for gstin in unique_gstins:
-
                 st.write(f"### Summary for GSTIN: {gstin}")
                 gstin_df = main_df[main_df['GSTIN/UIN of Supplier'] == gstin]
                 
