@@ -766,7 +766,7 @@ def process_meesho_files(uploaded_files):
     
     return uploaded_files
 
-def fill_missing_supplier_gstins(df, unique_counter_for_key_names):
+def fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet):
     # Handle edge case: remove rows where all columns are empty
     df = df.dropna(how='all')
 
@@ -774,7 +774,7 @@ def fill_missing_supplier_gstins(df, unique_counter_for_key_names):
         # All rows have missing GSTIN
         supplier_gstin = st.text_input(
             "All rows are missing supplier GSTIN. Please enter the GSTIN of the supplier:",
-            key=f"missing_gstin_column_{unique_counter_for_key_names}"
+            key=f"missing_gstin_column_{unique_counter_for_key_names}_{sheet}"
         )
 
         if supplier_gstin:
@@ -795,7 +795,7 @@ def fill_missing_supplier_gstins(df, unique_counter_for_key_names):
             # All rows have missing GSTIN
             supplier_gstin = st.text_input(
                 "All rows are missing supplier GSTIN. Please enter the GSTIN of the supplier:",
-                key=f"all_missing_gstin_{unique_counter_for_key_names}"
+                key=f"all_missing_gstin_{unique_counter_for_key_names}_{sheet}"
             )
 
             if supplier_gstin:
@@ -863,10 +863,10 @@ def main():
                     if is_known_source:
                         source = st.selectbox("Select the format", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
                         df = select_columns_from_known_source(df, needed_columns, source)
-                        df = fill_missing_supplier_gstins(df, unique_counter_for_key_names)
+                        df = fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet)
                     else:
                         df = select_columns_from_unknown_source(df, needed_columns, uploaded_file.name, sheet)
-                        df = fill_missing_supplier_gstins(df, unique_counter_for_key_names)
+                        df = fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet)
                     
                     if not df.empty:
                         df = format_place_of_supply(df)
