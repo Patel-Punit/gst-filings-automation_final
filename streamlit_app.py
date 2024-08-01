@@ -381,12 +381,28 @@ def select_columns_from_known_source(df, needed_columns, source):
         df = pd.concat([gst_df, state_df], ignore_index=True)
 
     if source == 'b2b ready to file format':
-        df = df[3:]
-        df.columns = ['GSTIN/UIN of Recipient', 'Receiver Name',    'Invoice Number',    'Invoice date', 'Invoice Value', 'Place Of Supply',  'Reverse Charge',   'Applicable % of Tax Rate', 'Invoice Type', 'E-Commerce GSTIN', 'Rate', 'Taxable Value' ,'Cess Amount']
+
+        removed_top_columns = False
+        for index, row in df.iterrows():
+            if row[0] == 'GSTIN/UIN of Recipient':
+                if index == 0:
+                    removed_top_columns = True
+
+        if not removed_top_columns:
+            df = df[3:]
+            df.columns = ['GSTIN/UIN of Recipient', 'Receiver Name',    'Invoice Number',    'Invoice date', 'Invoice Value', 'Place Of Supply',  'Reverse Charge',   'Applicable % of Tax Rate', 'Invoice Type', 'E-Commerce GSTIN', 'Rate', 'Taxable Value' ,'Cess Amount']
 
     if source == 'b2cs ready to file format':
-        df = df[3:]
-        df.columns = ['Type',	'Place Of Supply',	'Applicable % of Tax Rate',	'Rate',	'Taxable Value',	'Cess Amount',	'E-Commerce GSTIN']
+
+        removed_top_columns = False
+        for index, row in df.iterrows():
+            if row[1] == 'Place Of Supply':
+                if index == 0:
+                    removed_top_columns = True
+
+        if not removed_top_columns:
+            df = df[3:]
+            df.columns = ['Type',	'Place Of Supply',	'Applicable % of Tax Rate',	'Rate',	'Taxable Value',	'Cess Amount',	'E-Commerce GSTIN']
 
     available_name_of_needed_columns_dict = known_source_relevenat_columns[source]
     columns_to_keep = list(available_name_of_needed_columns_dict.keys())
