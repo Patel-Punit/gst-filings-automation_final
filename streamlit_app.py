@@ -28,7 +28,7 @@ known_source_relevenat_columns = {
           'Seller GSTIN' : 'GSTIN/UIN of Supplier',
           "Customer's Delivery State" : 'Place Of Supply',
           'CGST Rate' : 'Cgst Rate',
-          'SGST Rate' : 'Sgst Rate',
+          'SGST Rate (or UTGST as applicable)' : 'Sgst Rate',
           'IGST Rate' : 'Igst Rate',
           'Taxable Value (Final Invoice Amount -Taxes)' : 'Taxable Value'
       },
