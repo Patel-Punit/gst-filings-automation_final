@@ -445,6 +445,16 @@ def format_place_of_supply(df):
     return df
 
 def fill_missing_values(df):
+  # Convert all rate columns to numeric, coercing errors
+  df['Invoice Value'] = pd.to_numeric(df['Invoice Value'], errors='coerce').fillna(0)
+  df['Taxable Value'] = pd.to_numeric(df['Taxable Value'], errors='coerce').fillna(0)
+  df['Tax amount'] = pd.to_numeric(df['Tax amount'], errors='coerce').fillna(0)
+  df['Rate'] = pd.to_numeric(df['Rate'], errors='coerce').fillna(0)
+  df['Cgst Rate'] = pd.to_numeric(df['Cgst Rate'], errors='coerce').fillna(0)
+  df['Sgst Rate'] = pd.to_numeric(df['Sgst Rate'], errors='coerce').fillna(0)
+  df['Igst Rate'] = pd.to_numeric(df['Igst Rate'], errors='coerce').fillna(0)
+  df['Utgst Rate'] = pd.to_numeric(df['Utgst Rate'], errors='coerce').fillna(0)
+
   for index, row in df.iterrows():
 
     invoice_value = 0 if pd.isna(row['Invoice Value']) else row['Invoice Value']
