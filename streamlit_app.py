@@ -47,10 +47,10 @@ known_source_relevenat_columns = {
           'Igst Rate' : 'Igst Rate'
       },
       'VS internal format': {
-          'gst' : 'GSTIN/UIN of Recipient',
-          'Customer Name' : 'Receiver Name',
+          'gstin' : 'GSTIN/UIN of Recipient',
+          'Name of Customer' : 'Receiver Name',
           'Invoice No' : 'Invoice Number',
-          'Invoice Date' : 'Invoice Date',
+          'Date' : 'Invoice Date',
           'Invoice Total (Rs.)' : 'Invoice Value',
           'state' : 'Place Of Supply',
           'Rate of tax (%)' : 'Rate',
@@ -353,27 +353,24 @@ def select_columns_from_unknown_source(df, needed_columns, file_name, sheet_name
     
     return df
 
-def integers_in_string(string):
-    # Extracting the digits from the string
-    digits = [char for char in string if char.isdigit()]
-
-    return len(digits)
+def integers_in_string(s):
+    return sum(c.isdigit() for c in s)
 
 def gstin_or_state(df):
     # Check each row and apply the logic
-    df['gst_or_state'] = df['Customer GSTIN number/ Place of Supply'].apply(lambda x: 'gst' if integers_in_string(x) > 2 else 'state')
+    df['gst_or_state'] = df['Customer GSTIN number/ Place of Supply'].apply(lambda x: 'gst' if integers_in_string(str(x)) > 2 else 'state')
     return df
 
 def select_columns_from_known_source(df, needed_columns, source):
     if source == 'VS internal format':
         # Set the first row as the header
-        df = df[1:]  # Take the data less the header row
+        df = df[2:]  # Take the data less the header row
         df.columns = ['S.No.','Date','Invoice No','Customer GSTIN number/ Place of Supply','Name of Customer','HSN/SAC Code','Invoice Base Amount (Rs.)','Rate of tax (%)','SGST (Rs.)','CGST (Rs.)','IGST (Rs.)','Exempted/Nill rated sales (Rs.)','Invoice Total (Rs.)']
 
         df = gstin_or_state(df)
 
-        gst_df = df[df['gst_or_state']=='gst']
-        state_df = df[df['gst_or_state']=='state']
+        gst_df = df[df['gst_or_state']=='gst'].copy()
+        state_df = df[df['gst_or_state']=='state'].copy()
 
         gst_df['gstin'] = gst_df['Customer GSTIN number/ Place of Supply']
         gst_df['state'] = np.nan
@@ -444,12 +441,7 @@ def fill_missing_values(df):
     utgst_rate = 0 if pd.isna(row['Utgst Rate']) else row['Utgst Rate']
     gst_rate_combined = cgst_rate + sgst_rate + igst_rate + utgst_rate
 
-    if gst_rate >= -0.4 and gst_rate <= 0.4:
-        gst_rate = gst_rate*100
-
-    if gst_rate_combined >= -0.4 and gst_rate_combined <= 0.4:
-        gst_rate_combined = gst_rate_combined*100
-
+    # Fill gst_rate column & variable from gst_rate_combined if gst_rate is 0
     if gst_rate == 0 and (cgst_rate!=0 or sgst_rate!=0 or igst_rate!=0 or utgst_rate!=0):
       gst_rate = gst_rate_combined
       df.at[index, 'Rate'] = gst_rate
@@ -457,6 +449,12 @@ def fill_missing_values(df):
     elif gst_rate == 0 and (cgst_rate==0 and sgst_rate==0 and igst_rate==0 and utgst_rate==0):
       gst_rate = 0
       df.at[index, 'Rate'] = gst_rate
+
+    # Handle the case where gst_rate is like '0.18'
+    if gst_rate >= -0.4 and gst_rate <= 0.4:
+        gst_rate = gst_rate * 100
+        df.at[index, 'Rate'] = gst_rate
+
 
     if invoice_value != 0 and gst_rate != 0 and taxable_value == 0:
             taxable_value = invoice_value * 100 / (100 + gst_rate)
@@ -752,6 +750,59 @@ def process_meesho_files(uploaded_files):
     
     return uploaded_files
 
+def fill_missing_supplier_gstins(df, unique_counter_for_key_names):
+    # Handle edge case: remove rows where all columns are empty
+    df = df.dropna(how='all')
+
+    if 'GSTIN/UIN of Supplier' not in df.columns:
+        # All rows have missing GSTIN
+        supplier_gstin = st.text_input(
+            "All rows are missing supplier GSTIN. Please enter the GSTIN of the supplier:",
+            key=f"missing_gstin_column_{unique_counter_for_key_names}"
+        )
+
+        if supplier_gstin:
+            df['GSTIN/UIN of Supplier'] = supplier_gstin
+            return df
+        else:
+            st.error("Please enter a valid GSTIN for the supplier.")
+            st.stop()
+
+    else:
+        # Check for rows with missing GSTIN
+        df_with_no_gstin = df[df['GSTIN/UIN of Supplier'].isna()]
+
+        if len(df_with_no_gstin) == 0:
+            return df  # No missing GSTINs, return original dataframe
+
+        elif len(df) == len(df_with_no_gstin):
+            # All rows have missing GSTIN
+            supplier_gstin = st.text_input(
+                "All rows are missing supplier GSTIN. Please enter the GSTIN of the supplier:",
+                key=f"all_missing_gstin_{unique_counter_for_key_names}"
+            )
+
+            if supplier_gstin:
+                df['GSTIN/UIN of Supplier'] = supplier_gstin
+                return df
+            else:
+                st.error("Please enter a valid GSTIN for the supplier.")
+                st.stop()
+
+        else:
+            # Some rows have missing GSTIN
+            non_nan_gstins = df['GSTIN/UIN of Supplier'].dropna().unique()
+            
+            if len(non_nan_gstins) == 1:
+                # Only one unique non-NaN GSTIN
+                df['GSTIN/UIN of Supplier'].fillna(non_nan_gstins[0], inplace=True)
+                return df
+            else:
+                # Multiple unique non-NaN GSTINs
+                nan_count = len(df_with_no_gstin)
+                st.error(f"{nan_count} transactions do not have Supplier's GSTIN and multiple GSTINs are presnt in other transactions. Please fill and re-upload.")
+                st.stop()
+
 # Streamlit app
 def main():
     st.title("GST FILINGS AUTOMATION")
@@ -785,16 +836,21 @@ def main():
                 excel_file = pd.ExcelFile(uploaded_file)
                 sheet_names = excel_file.sheet_names
                 selected_sheets = st.multiselect(f"Select relevant sheets from {uploaded_file.name}", sheet_names)
+
+                unique_counter_for_key_names = 0
                 
                 for sheet in selected_sheets:
+                    unique_counter_for_key_names += 1
                     df = excel_file.parse(sheet)
                     is_known_source = st.checkbox(f"Is {sheet} from a known format?", key=f"{uploaded_file.name}_{sheet}_known")
                     
                     if is_known_source:
                         source = st.selectbox("Select the format", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
                         df = select_columns_from_known_source(df, needed_columns, source)
+                        df = fill_missing_supplier_gstins(df, unique_counter_for_key_names)
                     else:
                         df = select_columns_from_unknown_source(df, needed_columns, uploaded_file.name, sheet)
+                        df = fill_missing_supplier_gstins(df, unique_counter_for_key_names)
                     
                     if not df.empty:
                         df = format_place_of_supply(df)
