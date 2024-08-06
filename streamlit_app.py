@@ -22,9 +22,7 @@ known_source_relevenat_columns = {
           'Item Tax %' : 'Rate',
           'SubTotal' : 'Taxable Value',
           'Item Tax Amount' : 'Tax amount',
-          'GST Treatment' : 'GST treatment',
-          'Quantity': 'Total Quantity',
-          'HSN/SAC': 'HSN'
+          'GST Treatment' : 'GST treatment'
       },
       'Jio Mart': {
           'Seller GSTIN' : 'GSTIN/UIN of Supplier',
@@ -46,9 +44,7 @@ known_source_relevenat_columns = {
           'Cgst Rate' : 'Cgst Rate',
           'Sgst Rate' : 'Sgst Rate',
           'Utgst Rate' : 'Utgst Rate',
-          'Igst Rate' : 'Igst Rate',
-          'Hsn/sac': 'HSN',
-          'Quantity': 'Total Quantity'
+          'Igst Rate' : 'Igst Rate'
       },
       'VS internal format': {
           'gstin' : 'GSTIN/UIN of Recipient',
@@ -61,8 +57,7 @@ known_source_relevenat_columns = {
           'Invoice Base Amount (Rs.)' : 'Taxable Value',
           'CGST (Rs.)' : 'Cgst Rate',
           'SGST (Rs.)' : 'Sgst Rate',
-          'IGST (Rs.)' : 'Igst Rate',
-          'HSN/SAC Code': 'HSN'
+          'IGST (Rs.)' : 'Igst Rate'
       },
       'b2b ready to file format': {
           'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
@@ -104,9 +99,7 @@ known_source_relevenat_columns = {
           'gstin' : 'GSTIN/UIN of Supplier',
           'end_customer_state_new' : 'Place Of Supply',
           'gst_rate' : 'Rate',
-          'tcs_taxable_amount' : 'Taxable Value',
-          'quantity': 'Total Quantity',
-          'hsn_code': 'HSN'
+          'tcs_taxable_amount' : 'Taxable Value'
       },
       'Flipkart - 7(A)(2)': {
           'GSTIN' : 'GSTIN/UIN of Supplier',
