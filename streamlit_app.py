@@ -5,11 +5,11 @@ import numpy as np
 from io import BytesIO
 import io
 import tempfile
-
+from dateutil.parser import parse
 
 # Define necessary data structures
 known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
-#  test
+#  'HSN','Total Quantity'
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
           'GST Identification Number (GSTIN)' : 'GSTIN/UIN of Recipient',
@@ -22,7 +22,9 @@ known_source_relevenat_columns = {
           'Item Tax %' : 'Rate',
           'SubTotal' : 'Taxable Value',
           'Item Tax Amount' : 'Tax amount',
-          'GST Treatment' : 'GST treatment'
+          'GST Treatment' : 'GST treatment',
+          'Quantity': 'Total Quantity',
+          'HSN/SAC': 'HSN'
       },
       'Jio Mart': {
           'Seller GSTIN' : 'GSTIN/UIN of Supplier',
@@ -44,7 +46,9 @@ known_source_relevenat_columns = {
           'Cgst Rate' : 'Cgst Rate',
           'Sgst Rate' : 'Sgst Rate',
           'Utgst Rate' : 'Utgst Rate',
-          'Igst Rate' : 'Igst Rate'
+          'Igst Rate' : 'Igst Rate',
+          'Hsn/sac': 'HSN',
+          'Quantity': 'Total Quantity'
       },
       'VS internal format': {
           'gstin' : 'GSTIN/UIN of Recipient',
@@ -57,7 +61,8 @@ known_source_relevenat_columns = {
           'Invoice Base Amount (Rs.)' : 'Taxable Value',
           'CGST (Rs.)' : 'Cgst Rate',
           'SGST (Rs.)' : 'Sgst Rate',
-          'IGST (Rs.)' : 'Igst Rate'
+          'IGST (Rs.)' : 'Igst Rate',
+          'HSN/SAC Code': 'HSN'
       },
       'b2b ready to file format': {
           'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
@@ -99,7 +104,9 @@ known_source_relevenat_columns = {
           'gstin' : 'GSTIN/UIN of Supplier',
           'end_customer_state_new' : 'Place Of Supply',
           'gst_rate' : 'Rate',
-          'tcs_taxable_amount' : 'Taxable Value'
+          'tcs_taxable_amount' : 'Taxable Value',
+          'quantity': 'Total Quantity',
+          'hsn_code': 'HSN'
       },
       'Flipkart - 7(A)(2)': {
           'GSTIN' : 'GSTIN/UIN of Supplier',
@@ -309,10 +316,61 @@ state_codes = [
     }
 ]
 
+state_mis_match_mapping = {
+    "AP": "Andhra Pradesh",
+    "AN": "Andaman and Nicobar Islands",
+    "AR": "Arunachal Pradesh",
+    "AS": "Assam",
+    "BR": "Bihar",
+    "CG": "Chattisgarh",
+    "CH": "Chandigarh",
+    "DN": "Dadra and Nagar Haveli and Daman and Diu",
+    "DD": "Dadra and Nagar Haveli and Daman and Diu",
+    "DL": "Delhi",
+    "GA": "Goa",
+    "GJ": "Gujarat",
+    "HR": "Haryana",
+    "HP": "Himachal Pradesh",
+    "JK": "Jammu and Kashmir",
+    "JH": "Jharkhand",
+    "KA": "Karnataka",
+    "KL": "Kerala",
+    "LA": "Ladakh",
+    "LD": "Lakshadweep",
+    "MP": "Madhya Pradesh",
+    "MH": "Maharashtra",
+    "MN": "Manipur",
+    "ML": "Meghalaya",
+    "MZ": "Mizoram",
+    "NL": "Nagaland",
+    "OD": "Odisha",
+    "PY": "Pondicherry",
+    "PB": "Punjab",
+    "RJ": "Rajasthan",
+    "SK": "Sikkim",
+    "TN": "Tamil Nadu",
+    "TS": "Telangana",
+    "TR": "Tripura",
+    "UP": "Uttar Pradesh",
+    "UK": "Uttarakhand",
+    "WB": "West Bengal",
+    "UA": "Uttarakhand",
+    "OR": "Odisha",
+    "UT": "Uttarakhand",
+    "Puducherry": "Pondicherry",
+    "The Andaman and Nicobar Islands": "Andaman and Nicobar Islands",
+    "Andaman & Nicobar Islands": "Andaman and Nicobar Islands",
+    "The Andaman & Nicobar Islands": "Andaman and Nicobar Islands",
+    "Orisha": "Odisha",
+    "Oddisha": "Odisha",
+    "Orrisha": "Odisha"
+
+}
+
 needed_columns = [
     'GSTIN/UIN of Recipient', 'Receiver Name', 'GSTIN/UIN of Supplier', 'Invoice Number', 'Invoice Date',
     'Invoice Value', 'Place Of Supply', 'Rate', 'Taxable Value', 'Tax amount', 'GST treatment', 'Invoice Type',
-    'E-Commerce GSTIN', 'Cess Amount', 'Cgst Rate', 'Sgst Rate', 'Utgst Rate', 'Igst Rate', 'CESS Rate'
+    'E-Commerce GSTIN', 'Cess Amount', 'Cgst Rate', 'Sgst Rate', 'Utgst Rate', 'Igst Rate', 'CESS Rate','HSN','Total Quantity'
 ]
 
 # Define necessary functions
@@ -418,6 +476,10 @@ def select_columns_from_known_source(df, needed_columns, source):
 def format_place_of_supply(df):
     for index, row in df.iterrows():
         place_of_supply = row['Place Of Supply']
+
+        if place_of_supply in state_mis_match_mapping.keys():
+            place_of_supply = state_mis_match_mapping[place_of_supply]
+
         valid_states = [state['State'] for state in state_codes]
         valid_codes = [state['code_number'] for state in state_codes]
         valid_state_codes = [state['code'] for state in state_codes]
@@ -893,6 +955,22 @@ def main():
             main_df = create_place_of_origin_column(main_df, customer_state_code)
             main_df = fill_place_of_supply_with_place_of_origin(main_df)
             main_df = categorise_transactions(main_df)
+
+
+            # Function to parse dates with mixed formats
+            def parse_date(date):
+                if pd.isna(date):
+                    return None  # Return None for missing values
+                try:
+                    return parse(str(date), dayfirst=False)  # Parse assuming month/day/year
+                except ValueError:
+                    return parse(str(date), dayfirst=True)   # Parse assuming day/month/year
+
+            # Apply the function to the 'Invoice Date' column
+            main_df['Invoice Date'] = main_df['Invoice Date'].apply(parse_date)
+
+            # Change the format to '01-Jul-2024', handling NaT values gracefully
+            main_df['Invoice Date'] = main_df['Invoice Date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
 
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
 
