@@ -403,8 +403,8 @@ state_mis_match_mapping = {
 needed_columns = [
     'GSTIN/UIN of Recipient', 'Receiver Name', 'GSTIN/UIN of Supplier', 'Invoice Number', 'Invoice date',
     'Invoice Value', 'Place Of Supply', 'Rate', 'Taxable Value', 'Tax amount', 'GST treatment', 'Invoice Type',
-    'E-Commerce GSTIN', 'Cess Amount', 'Cgst Rate', 'Sgst Rate', 'Utgst Rate', 'Igst Rate', 'CESS Rate','HSN',
-    'Total Quantity', 'Cgst Amount', 'Sgst Amount', 'Igst Amount', 'Ugst Amount', 'HSN', 'Total Quantity'
+    'E-Commerce GSTIN', 'Cess Amount', 'Cgst Rate', 'Sgst Rate', 'Utgst Rate', 'Igst Rate', 'CESS Rate',
+    'Cgst Amount', 'Sgst Amount', 'Igst Amount', 'Ugst Amount'
 ]
 
 # Define necessary functions
@@ -951,7 +951,7 @@ def main():
             main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse_date(x, user_month_index))
 
             # Change the format to '01-Jul-2024', handling NaT values gracefully
-            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
+            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
 
 
             # # Function to parse dates with mixed formats
