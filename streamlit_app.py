@@ -16,7 +16,7 @@ known_source_relevenat_columns = {
           'Customer Name' : 'Receiver Name',
           'Supplier GST Registration Number' : 'GSTIN/UIN of Supplier',
           'Invoice Number' : 'Invoice Number',
-          'Invoice Date' : 'Invoice Date',
+          'Invoice Date' : 'Invoice date',
           'Total' : 'Invoice Value',
           'Place of Supply(With State Code)' : 'Place Of Supply',
           'Item Tax %' : 'Rate',
@@ -60,7 +60,7 @@ known_source_relevenat_columns = {
           'Buyer Name' : 'Receiver Name',
           'Seller Gstin' : 'GSTIN/UIN of Supplier',
           'Invoice Number' : 'Invoice Number',
-          'Invoice Date' : 'Invoice Date',
+          'Invoice Date' : 'Invoice date',
           'Invoice Amount' : 'Invoice Value',
           'Ship To State' : 'Place Of Supply',
           'Tax Exclusive Gross' : 'Taxable Value',
@@ -80,7 +80,7 @@ known_source_relevenat_columns = {
           'gstin' : 'GSTIN/UIN of Recipient',
           'Name of Customer' : 'Receiver Name',
           'Invoice No' : 'Invoice Number',
-          'Date' : 'Invoice Date',
+          'Date' : 'Invoice date',
           'Invoice Total (Rs.)' : 'Invoice Value',
           'state' : 'Place Of Supply',
           'Rate of tax (%)' : 'Rate',
@@ -93,7 +93,7 @@ known_source_relevenat_columns = {
           'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
           'Receiver Name' : 'Receiver Name',
           'Invoice Number' : 'Invoice Number',
-          'Invoice date' : 'Invoice Date',
+          'Invoice date' : 'Invoice date',
           'Invoice Value' : 'Invoice Value',
           'Place Of Supply' : 'Place Of Supply',
           'Rate' : 'Rate',
@@ -108,14 +108,14 @@ known_source_relevenat_columns = {
           'GSTIN Number' : 'GSTIN/UIN of Recipient',
           'Customer name' : 'Receiver Name',
           'Invoice Number' : 'Invoice Number',
-          'Invoice Date' : 'Invoice Date',
+          'Invoice Date' : 'Invoice date',
           'GST Rate' : 'Rate',
           'Item Price' : 'Taxable Value'
       },
       'Amazon': {
           'Seller Gstin' : 'GSTIN/UIN of Supplier',
           'Invoice Number' : 'Invoice Number',
-          'Invoice Date' : 'Invoice Date',
+          'Invoice Date' : 'Invoice date',
           'Invoice Amount' : 'Invoice Value',
           'Ship To State' : 'Place Of Supply',
           'Tax Exclusive Gross' : 'Taxable Value',
@@ -401,7 +401,7 @@ state_mis_match_mapping = {
 }
 
 needed_columns = [
-    'GSTIN/UIN of Recipient', 'Receiver Name', 'GSTIN/UIN of Supplier', 'Invoice Number', 'Invoice Date',
+    'GSTIN/UIN of Recipient', 'Receiver Name', 'GSTIN/UIN of Supplier', 'Invoice Number', 'Invoice date',
     'Invoice Value', 'Place Of Supply', 'Rate', 'Taxable Value', 'Tax amount', 'GST treatment', 'Invoice Type',
     'E-Commerce GSTIN', 'Cess Amount', 'Cgst Rate', 'Sgst Rate', 'Utgst Rate', 'Igst Rate', 'CESS Rate','HSN',
     'Total Quantity', 'Cgst Amount', 'Sgst Amount', 'Igst Amount', 'Ugst Amount', 'HSN', 'Total Quantity'
@@ -715,7 +715,7 @@ def categorise_transactions(df):
 
 def create_b2b_dataframe(df):
     b2b = df[df['transaction_type'] == 'b2b']
-    b2b_columns_needed = ['GSTIN/UIN of Recipient', 'Receiver Name', 'Invoice Number', 'Invoice Date',
+    b2b_columns_needed = ['GSTIN/UIN of Recipient', 'Receiver Name', 'Invoice Number', 'Invoice date',
                           'Invoice Value', 'Place Of Supply', 'Reverse Charge', 'Applicable % of Tax Rate',
                           'Invoice Type', 'E-Commerce GSTIN', 'Rate', 'Taxable Value', 'Cess Amount']
     
@@ -744,7 +744,7 @@ def create_b2cs_dataframe(df):
 
 def create_b2cl_dataframe(df):
     b2cl = df[df['transaction_type'] == 'b2cl']
-    b2cl_columns_needed = ['Invoice Number', 'Invoice Date', 'Invoice Value', 'Place Of Supply',
+    b2cl_columns_needed = ['Invoice Number', 'Invoice date', 'Invoice Value', 'Place Of Supply',
                            'Applicable % of Tax Rate', 'Rate', 'Taxable Value', 'Cess Amount', 'E-Commerce GSTIN']
     
     # Ensure all needed columns exist
@@ -948,10 +948,10 @@ def main():
             user_month_index = month_names.index(user_month) + 1  # Convert month name to month number
 
             # Apply the function to the 'Invoice Date' column
-            main_df['Invoice Date'] = main_df['Invoice Date'].apply(lambda x: parse_date(x, user_month_index))
+            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse_date(x, user_month_index))
 
             # Change the format to '01-Jul-2024', handling NaT values gracefully
-            main_df['Invoice Date'] = main_df['Invoice Date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
+            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
 
 
             # # Function to parse dates with mixed formats
@@ -964,10 +964,10 @@ def main():
             #         return parse(str(date), dayfirst=True)   # Parse assuming day/month/year
 
             # # Apply the function to the 'Invoice Date' column
-            # main_df['Invoice Date'] = main_df['Invoice Date'].apply(parse_date)
+            # main_df['Invoice date'] = main_df['Invoice date'].apply(parse_date)
 
             # # Change the format to '01-Jul-2024', handling NaT values gracefully
-            # main_df['Invoice Date'] = main_df['Invoice Date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
+            # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
 
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
 
