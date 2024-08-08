@@ -733,6 +733,10 @@ def create_b2cs_dataframe(df):
     for col in b2cs_columns_needed:
         if col not in b2cs.columns:
             b2cs[col] = np.nan
+
+    b2cs['Type'] = 'OE'
+
+    b2cs = b2cs[b2cs['Taxable Value']!=0]
     
     return b2cs[b2cs_columns_needed]
 
