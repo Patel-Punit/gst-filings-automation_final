@@ -9,7 +9,7 @@ from dateutil.parser import parse
 
 # Define necessary data structures
 known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
-#  'HSN','Total Quantity'
+#  'HSN','Description','UQC','Total Quantity','Rate','Total Value','Taxable Value','Integrated Tax Amount','Central Tax Amount','State/UT Tax Amount','Cess Amount','UT Tax Amount','Rate'
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
           'GST Identification Number (GSTIN)' : 'GSTIN/UIN of Recipient',
@@ -23,6 +23,29 @@ known_source_relevenat_columns = {
           'SubTotal' : 'Taxable Value',
           'Item Tax Amount' : 'Tax amount',
           'GST Treatment' : 'GST treatment'
+      },
+      "HSN ready to file": {
+          "HSN":"HSN",
+          "Description":"Description",
+          "UQC":"UQC",
+          "Total Quantity":"Total Quantity",
+          "Rate":"Rate",
+          "Total Value":"Total Value",
+          "Taxable Value":"Taxable Value",
+          "Integrated Tax Amount":"Integrated Tax Amount",
+          "Central Tax Amount":"Central Tax Amount",
+          "State/UT Tax Amount":"State/UT Tax Amount",
+          "Cess Amount":"Cess Amount"
+      },
+      "Flipkart HSN": {
+          "HSN Number":"HSN",
+          "Total Quantity in Nos.":"Total Quantity",
+          "Total Value Rs.":"Total Value",
+          "Total Taxable Value Rs.":"Taxable Value",
+          "IGST Amount Rs.":"Igst Amount",
+          "CGST Amount Rs.":"Cgst Amount",
+          "SGST Amount Rs.":"Sgst Amount",
+          "Cess Rs.":"Cess Amount"
       },
       'Jio Mart': {
           'Seller GSTIN' : 'GSTIN/UIN of Supplier',
@@ -44,8 +67,15 @@ known_source_relevenat_columns = {
           'Cgst Rate' : 'Cgst Rate',
           'Sgst Rate' : 'Sgst Rate',
           'Utgst Rate' : 'Utgst Rate',
-          'Igst Rate' : 'Igst Rate'
+          'Igst Rate' : 'Igst Rate',
+          'Igst Tax': 'Igst Amount',
+          'Cgst Tax': 'Cgst Amount',
+          'Sgst Tax': 'Sgst Amount',
+          'Utgst Tax': 'Ugst Amount',
+          'Hsn/sac': 'HSN',
+          'Quantity': 'Total Quantity'
       },
+    #   'Cgst Amount', 'Sgst Amount', 'Igst Amount', 'Ugst Amount',
       'VS internal format': {
           'gstin' : 'GSTIN/UIN of Recipient',
           'Name of Customer' : 'Receiver Name',
@@ -55,9 +85,9 @@ known_source_relevenat_columns = {
           'state' : 'Place Of Supply',
           'Rate of tax (%)' : 'Rate',
           'Invoice Base Amount (Rs.)' : 'Taxable Value',
-          'CGST (Rs.)' : 'Cgst Rate',
-          'SGST (Rs.)' : 'Sgst Rate',
-          'IGST (Rs.)' : 'Igst Rate'
+          'CGST (Rs.)' : 'Cgst Amount',
+          'SGST (Rs.)' : 'Sgst Amount',
+          'IGST (Rs.)' : 'Igst Amount'
       },
       'b2b ready to file format': {
           'GSTIN/UIN of Recipient' : 'GSTIN/UIN of Recipient',
@@ -93,13 +123,21 @@ known_source_relevenat_columns = {
           'Cgst Rate' : 'Cgst Rate',
           'Sgst Rate' : 'Sgst Rate',
           'Utgst Rate' : 'Utgst Rate',
-          'Igst Rate' : 'Igst Rate'
+          'Igst Rate' : 'Igst Rate',
+          'Igst Tax': 'Igst Amount',
+          'Cgst Tax': 'Cgst Amount',
+          'Sgst Tax': 'Sgst Amount',
+          'Utgst Tax': 'Ugst Amount',
+          'Hsn/sac': 'HSN',
+          'Quantity': 'Total Quantity'
       },
       'Meesho': {
           'gstin' : 'GSTIN/UIN of Supplier',
           'end_customer_state_new' : 'Place Of Supply',
           'gst_rate' : 'Rate',
-          'tcs_taxable_amount' : 'Taxable Value'
+          'tcs_taxable_amount' : 'Taxable Value',
+          'hsn_code': '',
+          'quantity': ''
       },
       'Flipkart - 7(A)(2)': {
           'GSTIN' : 'GSTIN/UIN of Supplier',
@@ -356,14 +394,17 @@ state_mis_match_mapping = {
     "The Andaman & Nicobar Islands": "Andaman and Nicobar Islands",
     "Orisha": "Odisha",
     "Oddisha": "Odisha",
-    "Orrisha": "Odisha"
+    "Orrisha": "Odisha",
+    "PONDICHERRY": 'Pondicherry',
+    "JAMMU & KASHMIR": 'Jammu and Kashmir'
 
 }
 
 needed_columns = [
     'GSTIN/UIN of Recipient', 'Receiver Name', 'GSTIN/UIN of Supplier', 'Invoice Number', 'Invoice Date',
     'Invoice Value', 'Place Of Supply', 'Rate', 'Taxable Value', 'Tax amount', 'GST treatment', 'Invoice Type',
-    'E-Commerce GSTIN', 'Cess Amount', 'Cgst Rate', 'Sgst Rate', 'Utgst Rate', 'Igst Rate', 'CESS Rate','HSN','Total Quantity'
+    'E-Commerce GSTIN', 'Cess Amount', 'Cgst Rate', 'Sgst Rate', 'Utgst Rate', 'Igst Rate', 'CESS Rate','HSN',
+    'Total Quantity', 'Cgst Amount', 'Sgst Amount', 'Igst Amount', 'Ugst Amount', 'HSN', 'Total Quantity'
 ]
 
 # Define necessary functions
@@ -430,6 +471,21 @@ def select_columns_from_known_source(df, needed_columns, source):
         state_df['gstin'] = np.nan
 
         df = pd.concat([gst_df, state_df], ignore_index=True)
+
+        # HSN ready to file
+    
+    if source == 'HSN ready to file':
+
+        removed_top_columns = False
+        for index, row in df.iterrows():
+            if row[0] == 'HSN':
+                if index == 0:
+                    removed_top_columns = True
+
+        if not removed_top_columns:
+            df = df[3:]
+            df.columns = ['HSN','Description','UQC','Total Quantity','Rate','Total Value','Taxable Value','Integrated Tax Amount','Central Tax Amount','State/UT Tax Amount','Cess Amount']
+
 
     if source == 'b2b ready to file format':
 
@@ -509,6 +565,10 @@ def fill_missing_values(df):
   df['Sgst Rate'] = pd.to_numeric(df['Sgst Rate'], errors='coerce').fillna(0)
   df['Igst Rate'] = pd.to_numeric(df['Igst Rate'], errors='coerce').fillna(0)
   df['Utgst Rate'] = pd.to_numeric(df['Utgst Rate'], errors='coerce').fillna(0)
+  df['Cgst Amount'] = pd.to_numeric(df['Cgst Amount'], errors='coerce').fillna(0)
+  df['Sgst Amount'] = pd.to_numeric(df['Sgst Amount'], errors='coerce').fillna(0)
+  df['Igst Amount'] = pd.to_numeric(df['Igst Amount'], errors='coerce').fillna(0)
+  df['Ugst Amount'] = pd.to_numeric(df['Ugst Amount'], errors='coerce').fillna(0)
 
   for index, row in df.iterrows():
 
@@ -521,6 +581,15 @@ def fill_missing_values(df):
     igst_rate = 0 if pd.isna(row['Igst Rate']) else row['Igst Rate']
     utgst_rate = 0 if pd.isna(row['Utgst Rate']) else row['Utgst Rate']
     gst_rate_combined = cgst_rate + sgst_rate + igst_rate + utgst_rate
+
+    cgst_amount = 0 if pd.isna(row['Cgst Amount']) else row['Cgst Amount']
+    sgst_amount = 0 if pd.isna(row['Sgst Amount']) else row['Sgst Amount']
+    igst_amount = 0 if pd.isna(row['Igst Amount']) else row['Igst Amount']
+    ugst_amount = 0 if pd.isna(row['Ugst Amount']) else row['Ugst Amount']
+    tax_amount_combined = cgst_amount + sgst_amount + igst_amount + ugst_amount
+
+    if tax_amount == 0 and (cgst_amount!=0 or sgst_amount!=0 or igst_amount!=0 or ugst_amount!=0):
+        tax_amount = tax_amount_combined
 
     # Fill gst_rate column & variable from gst_rate_combined if gst_rate is 0
     if gst_rate == 0 and (cgst_rate!=0 or sgst_rate!=0 or igst_rate!=0 or utgst_rate!=0):
@@ -655,35 +724,6 @@ def create_b2b_dataframe(df):
         if col not in b2b.columns:
             b2b[col] = np.nan
     
-    # # Filter out rows with negative Taxable Value or Invoice Value
-    # negative_transactions = b2b[(b2b['Taxable Value'] < 0) | (b2b['Invoice Value'] < 0)]
-    # b2b = b2b[(b2b['Taxable Value'] >= 0) & (b2b['Invoice Value'] >= 0)]
-    
-    # # Notify user about excluded transactions with a prominent warning
-    # if not negative_transactions.empty:
-    #     st.markdown(
-    #         """
-    #         <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
-    #             <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Value Transactions Detected</h3>
-    #             <p style="font-weight: bold;">Some transactions with negative Taxable Value or Invoice Value were excluded from B2B.</p>
-    #             <p>Please handle these transactions manually. See details below.</p>
-    #         </div>
-    #         """,
-    #         unsafe_allow_html=True
-    #     )
-        
-    #     st.markdown("### Excluded Transactions:")
-    #     st.dataframe(negative_transactions[b2b_columns_needed], use_container_width=True)
-        
-    #     # Add a download button for excluded transactions
-    #     csv = negative_transactions[b2b_columns_needed].to_csv(index=False)
-    #     st.download_button(
-    #         label="Download Excluded Transactions",
-    #         data=csv,
-    #         file_name="excluded_b2b_transactions.csv",
-    #         mime="text/csv",
-    #     )
-    
     return b2b[b2b_columns_needed]
 
 def create_b2cs_dataframe(df):
@@ -691,50 +731,6 @@ def create_b2cs_dataframe(df):
     b2cs['Type'] = 'b2cs'
     b2cs['Applicable % of Tax Rate'] = np.nan
     b2cs['E-Commerce GSTIN'] = np.nan
-    
-    # # Group by 'Place Of Supply' and 'Rate', but don't aggregate yet
-    # grouped = b2cs.groupby(['Place Of Supply', 'Rate'])
-    
-    # # Identify groups with negative Taxable Value
-    # negative_groups = grouped['Taxable Value'].sum()[grouped['Taxable Value'].sum() < 0].reset_index()
-    
-    # if not negative_groups.empty:
-    #     st.markdown(
-    #         """
-    #         <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
-    #             <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Taxable Value Detected in B2CS Groups</h3>
-    #             <p style="font-weight: bold;">Some state and rate combinations have a negative total Taxable Value in B2CS transactions.</p>
-    #             <p>These groups have been excluded from the B2CS summary. Please review and handle these transactions manually.</p>
-    #         </div>
-    #         """,
-    #         unsafe_allow_html=True
-    #     )
-        
-    #     st.markdown("### Excluded B2CS Groups:")
-    #     st.dataframe(negative_groups, use_container_width=True)
-        
-    #     # Get all transactions from the negative groups
-    #     negative_transactions = pd.DataFrame()
-    #     for _, row in negative_groups.iterrows():
-    #         group_transactions = b2cs[(b2cs['Place Of Supply'] == row['Place Of Supply']) & 
-    #                                   (b2cs['Rate'] == row['Rate'])]
-    #         negative_transactions = pd.concat([negative_transactions, group_transactions])
-        
-    #     st.markdown("### All Transactions from Excluded Groups:")
-    #     st.dataframe(negative_transactions, use_container_width=True)
-        
-    #     # Add a download button for excluded transactions
-    #     csv = negative_transactions.to_csv(index=False)
-    #     st.download_button(
-    #         label="Download Excluded B2CS Transactions",
-    #         data=csv,
-    #         file_name="excluded_b2cs_transactions.csv",
-    #         mime="text/csv",
-    #     )
-        
-    #     # Remove negative groups from b2cs DataFrame
-    #     b2cs = b2cs[~((b2cs['Place Of Supply'].isin(negative_groups['Place Of Supply'])) & 
-                    #   (b2cs['Rate'].isin(negative_groups['Rate'])))]
     
     # Now perform the aggregation on the filtered data
     b2cs = b2cs.groupby(['Place Of Supply', 'Rate'])[['Taxable Value', 'Cess Amount']].sum().reset_index()
@@ -755,35 +751,6 @@ def create_b2cl_dataframe(df):
     for col in b2cl_columns_needed:
         if col not in b2cl.columns:
             b2cl[col] = np.nan
-    
-    # # Filter out rows with negative Taxable Value or Invoice Value
-    # negative_transactions = b2cl[(b2cl['Taxable Value'] < 0) | (b2cl['Invoice Value'] < 0)]
-    # b2cl = b2cl[(b2cl['Taxable Value'] >= 0) & (b2cl['Invoice Value'] >= 0)]
-    
-    # # Notify user about excluded transactions with a prominent warning
-    # if not negative_transactions.empty:
-    #     st.markdown(
-    #         """
-    #         <div style="padding: 1rem; border-radius: 0.5rem; background-color: #ffcccc; border: 2px solid #ff0000;">
-    #             <h3 style="color: #ff0000; margin-top: 0;">⚠️ Warning: Negative Value Transactions Detected in B2CL</h3>
-    #             <p style="font-weight: bold;">Some transactions with negative Taxable Value or Invoice Value were excluded from B2CL.</p>
-    #             <p>Please handle these transactions manually. See details below.</p>
-    #         </div>
-    #         """,
-    #         unsafe_allow_html=True
-    #     )
-        
-    #     st.markdown("### Excluded B2CL Transactions:")
-    #     st.dataframe(negative_transactions[b2cl_columns_needed], use_container_width=True)
-        
-    #     # Add a download button for excluded transactions
-    #     csv = negative_transactions[b2cl_columns_needed].to_csv(index=False)
-    #     st.download_button(
-    #         label="Download Excluded B2CL Transactions",
-    #         data=csv,
-    #         file_name="excluded_b2cl_transactions.csv",
-    #         mime="text/csv",
-    #     )
     
     return b2cl[b2cl_columns_needed]
 
@@ -923,7 +890,7 @@ def main():
                 for sheet in selected_sheets:
                     unique_counter_for_key_names += 1
                     df = excel_file.parse(sheet)
-                    is_known_source = st.checkbox(f"Is {sheet} from a known format?", key=f"{uploaded_file.name}_{sheet}_known")
+                    is_known_source = st.checkbox(f"Is {sheet} from a known format?", key=f"{uploaded_file.name}_{sheet}_known", value=True)
                     
                     if is_known_source:
                         source = st.selectbox("Select the format", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
@@ -951,21 +918,61 @@ def main():
 
 
             # Function to parse dates with mixed formats
-            def parse_date(date):
+            def parse_date(date, user_month):
                 if pd.isna(date):
                     return None  # Return None for missing values
                 try:
-                    return parse(str(date), dayfirst=False)  # Parse assuming month/day/year
+                    parsed_date = parse(str(date), dayfirst=False)  # Parse assuming month/day/year
                 except ValueError:
-                    return parse(str(date), dayfirst=True)   # Parse assuming day/month/year
+                    parsed_date = parse(str(date), dayfirst=True)   # Parse assuming day/month/year
+                
+                if parsed_date.month == user_month:
+                    return parsed_date
+                else:
+                    # Swap day and month if the user input doesn't match
+                    try:
+                        corrected_date = parsed_date.replace(day=parsed_date.month, month=user_month)
+                        return corrected_date
+                    except ValueError:
+                        return None
+
+            # Streamlit app
+            st.title("Date Format Parser")
+
+            # Dropdown to select the month
+            month_names = ["January", "February", "March", "April", "May", "June", 
+                        "July", "August", "September", "October", "November", "December"]
+            current_month = pd.Timestamp.now().month
+            previous_month = (current_month - 2) % 12  # Adjusted to select the previous month by default
+            user_month = st.selectbox("Select the month of the dates in your data:", month_names, index=previous_month)
+            user_month_index = month_names.index(user_month) + 1  # Convert month name to month number
 
             # Apply the function to the 'Invoice Date' column
-            main_df['Invoice Date'] = main_df['Invoice Date'].apply(parse_date)
+            main_df['Invoice Date'] = main_df['Invoice Date'].apply(lambda x: parse_date(x, user_month_index))
 
             # Change the format to '01-Jul-2024', handling NaT values gracefully
             main_df['Invoice Date'] = main_df['Invoice Date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
 
+
+            # # Function to parse dates with mixed formats
+            # def parse_date(date):
+            #     if pd.isna(date):
+            #         return None  # Return None for missing values
+            #     try:
+            #         return parse(str(date), dayfirst=False)  # Parse assuming month/day/year
+            #     except ValueError:
+            #         return parse(str(date), dayfirst=True)   # Parse assuming day/month/year
+
+            # # Apply the function to the 'Invoice Date' column
+            # main_df['Invoice Date'] = main_df['Invoice Date'].apply(parse_date)
+
+            # # Change the format to '01-Jul-2024', handling NaT values gracefully
+            # main_df['Invoice Date'] = main_df['Invoice Date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
+
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
+
+            main_df['GSTIN/UIN of Supplier'] = main_df['GSTIN/UIN of Supplier'].astype(str).apply(lambda x: x[:15])
+            main_df['GSTIN/UIN of Recipient'] = main_df['GSTIN/UIN of Recipient'].astype(str).apply(lambda x: x[:15])
 
             unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
             
