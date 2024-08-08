@@ -71,9 +71,7 @@ known_source_relevenat_columns = {
           'Igst Tax': 'Igst Amount',
           'Cgst Tax': 'Cgst Amount',
           'Sgst Tax': 'Sgst Amount',
-          'Utgst Tax': 'Ugst Amount',
-          'Hsn/sac': 'HSN',
-          'Quantity': 'Total Quantity'
+          'Utgst Tax': 'Ugst Amount'
       },
     #   'Cgst Amount', 'Sgst Amount', 'Igst Amount', 'Ugst Amount',
       'VS internal format': {
@@ -127,17 +125,13 @@ known_source_relevenat_columns = {
           'Igst Tax': 'Igst Amount',
           'Cgst Tax': 'Cgst Amount',
           'Sgst Tax': 'Sgst Amount',
-          'Utgst Tax': 'Ugst Amount',
-          'Hsn/sac': 'HSN',
-          'Quantity': 'Total Quantity'
+          'Utgst Tax': 'Ugst Amount'
       },
       'Meesho': {
           'gstin' : 'GSTIN/UIN of Supplier',
           'end_customer_state_new' : 'Place Of Supply',
           'gst_rate' : 'Rate',
-          'tcs_taxable_amount' : 'Taxable Value',
-          'hsn_code': '',
-          'quantity': ''
+          'tcs_taxable_amount' : 'Taxable Value'
       },
       'Flipkart - 7(A)(2)': {
           'GSTIN' : 'GSTIN/UIN of Supplier',
