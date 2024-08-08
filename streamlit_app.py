@@ -9,7 +9,7 @@ from dateutil.parser import parse
 
 # Define necessary data structures
 known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
-#  'HSN','Description','UQC','Total Quantity','Rate','Total Value','Taxable Value','Integrated Tax Amount','Central Tax Amount','State/UT Tax Amount','Cess Amount','UT Tax Amount','Rate'
+
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
           'GST Identification Number (GSTIN)' : 'GSTIN/UIN of Recipient',
@@ -973,6 +973,9 @@ def main():
 
             main_df['GSTIN/UIN of Supplier'] = main_df['GSTIN/UIN of Supplier'].astype(str).apply(lambda x: x[:15])
             main_df['GSTIN/UIN of Recipient'] = main_df['GSTIN/UIN of Recipient'].astype(str).apply(lambda x: x[:15])
+
+            main_df['Reverse Charge'] = 'N'
+            main_df['Invoice Type'] = 'Regular B2B'
 
             unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
             
