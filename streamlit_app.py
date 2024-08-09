@@ -549,6 +549,12 @@ def format_place_of_supply(df):
 
     return df
 
+def round_to_nearest_zero(value):
+    # Check if the difference from the nearest integer is within 0.02
+    if abs(value - round(value)) <= 0.02:
+        return round(value)
+    return value
+
 def fill_missing_values(df):
   # Convert all rate columns to numeric, coercing errors
   df['Invoice Value'] = pd.to_numeric(df['Invoice Value'], errors='coerce').fillna(0)
@@ -582,8 +588,9 @@ def fill_missing_values(df):
     ugst_amount = 0 if pd.isna(row['Ugst Amount']) else row['Ugst Amount']
     tax_amount_combined = cgst_amount + sgst_amount + igst_amount + ugst_amount
 
-    if tax_amount == 0 and (cgst_amount!=0 or sgst_amount!=0 or igst_amount!=0 or ugst_amount!=0):
+    if tax_amount == 0 and (tax_amount_combined != 0):
         tax_amount = tax_amount_combined
+        df.at[index, 'Tax amount'] = tax_amount
 
     # Fill gst_rate column & variable from gst_rate_combined if gst_rate is 0
     if gst_rate == 0 and (cgst_rate!=0 or sgst_rate!=0 or igst_rate!=0 or utgst_rate!=0):
@@ -603,46 +610,46 @@ def fill_missing_values(df):
     if invoice_value != 0 and gst_rate != 0 and taxable_value == 0:
             taxable_value = invoice_value * 100 / (100 + gst_rate)
             df.at[index, 'Taxable Value'] = taxable_value
-            continue
+            # continue
 
     elif invoice_value != 0 and gst_rate == 0 and taxable_value != 0:
         tax_amount = invoice_value - taxable_value
         gst_rate = (tax_amount / taxable_value) * 100
         df.at[index, 'Rate'] = gst_rate
-        continue
+        # continue
 
     elif invoice_value != 0 and gst_rate == 0 and taxable_value == 0 and tax_amount != 0:
         taxable_value = invoice_value - tax_amount
         gst_rate = (tax_amount / taxable_value) * 100
         df.at[index, 'Rate'] = gst_rate
         df.at[index, 'Taxable Value'] = taxable_value
-        continue
+        # continue
 
     elif invoice_value != 0 and gst_rate == 0 and taxable_value == 0 and gst_rate_combined != 0:
         gst_rate = gst_rate_combined
         taxable_value = invoice_value * 100 / (100 + gst_rate)
         df.at[index, 'Rate'] = gst_rate
         df.at[index, 'Taxable Value'] = taxable_value
-        continue
+        # continue
 
     if invoice_value == 0 and gst_rate != 0 and taxable_value != 0:
         invoice_value = taxable_value + (taxable_value * gst_rate / 100)
         df.at[index, 'Invoice Value'] = invoice_value
-        continue
+        # continue
 
     if invoice_value == 0 and gst_rate != 0 and taxable_value == 0 and tax_amount != 0:
         taxable_value = tax_amount * 100 / gst_rate
         invoice_value = taxable_value + tax_amount
         df.at[index, 'Invoice Value'] = invoice_value
         df.at[index, 'Taxable Value'] = taxable_value
-        continue
+        # continue
 
     elif invoice_value == 0 and gst_rate == 0 and taxable_value != 0 and tax_amount != 0:
         gst_rate = (tax_amount / taxable_value) * 100
         invoice_value = taxable_value + tax_amount
         df.at[index, 'Rate'] = gst_rate
         df.at[index, 'Invoice Value'] = invoice_value
-        continue
+        # continue
 
     elif invoice_value == 0 and gst_rate == 0 and taxable_value != 0 and tax_amount == 0 and gst_rate_combined != 0:
         gst_rate = gst_rate_combined
@@ -658,11 +665,19 @@ def fill_missing_values(df):
         df.at[index, 'Rate'] = gst_rate
         df.at[index, 'Taxable Value'] = taxable_value
         df.at[index, 'Invoice Value'] = invoice_value
-        continue
+        # continue
+
+    if tax_amount == 0 and invoice_value != 0 and taxable_value != 0:
+        tax_amount = invoice_value - taxable_value
+        df.at[index, 'Tax amount'] = tax_amount
+
+    gst_rate = round_to_nearest_zero(gst_rate)
+
+    df.at[index, 'Rate'] = gst_rate
 
   return df
 
-def create_place_of_origin_column(df, customer_state):
+def create_place_of_origin_column(df):
     df['place_of_origin'] = np.nan
 
     for index, row in df.iterrows():
@@ -675,9 +690,6 @@ def create_place_of_origin_column(df, customer_state):
                     if state['code_number'] == supplier_state_code:
                         df.at[index, 'place_of_origin'] = state['code']
                         break
-
-        if pd.isna(df.at[index, 'place_of_origin']):
-            df.at[index, 'place_of_origin'] = customer_state
 
     return df
 
@@ -900,18 +912,46 @@ def main():
                     
                     if not df.empty:
                         df = format_place_of_supply(df)
+
+                        df = fill_missing_values(df)
+                        df = create_place_of_origin_column(df)
+                        df = fill_place_of_supply_with_place_of_origin(df)
+
+                        taxable_value = df['Taxable Value'].sum()
+                        tax_amount = df['Tax amount'].sum()
+                        igst_tax_amount = df[df['Place Of Supply'] != df['place_of_origin']]['Tax amount'].sum()
+                        cgst_tax_amount = df[df['Place Of Supply'] == df['place_of_origin']]['Tax amount'].sum()/2
+                        sgst_tax_amount = df[df['Place Of Supply'] == df['place_of_origin']]['Tax amount'].sum()/2
+
+                        st.title(f'Summary of {sheet} for TCS')
+                        # Assuming the variables are already calculated
+                        summary_data = {
+                            "Taxable Value": [taxable_value],
+                            "IGST Amount": [igst_tax_amount],
+                            "CGST Amount": [cgst_tax_amount],
+                            "SGST Amount": [sgst_tax_amount]
+                        }
+
+                        # Convert the data into a DataFrame
+                        summary_df = pd.DataFrame(summary_data)
+                        st.table(summary_df)
+
                         all_dataframes.append(df)
 
         if all_dataframes:
             main_df = pd.concat(all_dataframes)
             main_df.reset_index(drop=True, inplace=True)
+
+            # print(main_df)
+            # st.write(main_df)
+            # print('main_df')
             
-            customer_state_code = st.selectbox("Select the state code of the supplier", 
-                                               [state['code'] for state in state_codes])
+            # customer_state_code = st.selectbox("Select the state code of the supplier", 
+            #                                    [state['code'] for state in state_codes])
             
-            main_df = fill_missing_values(main_df)
-            main_df = create_place_of_origin_column(main_df, customer_state_code)
-            main_df = fill_place_of_supply_with_place_of_origin(main_df)
+            # main_df = fill_missing_values(main_df)
+            # main_df = create_place_of_origin_column(main_df, customer_state_code)
+            # main_df = fill_place_of_supply_with_place_of_origin(main_df)
             main_df = categorise_transactions(main_df)
 
 
@@ -934,8 +974,6 @@ def main():
                     except ValueError:
                         return None
 
-            # Streamlit app
-            st.title("Date Format Parser")
 
             # Dropdown to select the month
             month_names = ["January", "February", "March", "April", "May", "June", 
@@ -950,22 +988,6 @@ def main():
 
             # Change the format to '01-Jul-2024', handling NaT values gracefully
             main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
-
-
-            # # Function to parse dates with mixed formats
-            # def parse_date(date):
-            #     if pd.isna(date):
-            #         return None  # Return None for missing values
-            #     try:
-            #         return parse(str(date), dayfirst=False)  # Parse assuming month/day/year
-            #     except ValueError:
-            #         return parse(str(date), dayfirst=True)   # Parse assuming day/month/year
-
-            # # Apply the function to the 'Invoice Date' column
-            # main_df['Invoice date'] = main_df['Invoice date'].apply(parse_date)
-
-            # # Change the format to '01-Jul-2024', handling NaT values gracefully
-            # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%Y') if pd.notna(x) else None)
 
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
 
