@@ -6,9 +6,13 @@ from io import BytesIO
 import io
 import tempfile
 from dateutil.parser import parse
+import requests
+import zipfile
 
 # Define necessary data structures
-known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
+known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)',
+                 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar',
+                 'Jio Mart','PDF data']
 
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
@@ -23,6 +27,11 @@ known_source_relevenat_columns = {
           'SubTotal' : 'Taxable Value',
           'Item Tax Amount' : 'Tax amount',
           'GST Treatment' : 'GST treatment'
+      },
+      "PDF data": {
+          'item_total' : 'Taxable Value',
+          'cgst_percentage' : 'Cgst Rate',
+          'sgst_percentage' : 'Sgst Rate'
       },
       "HSN ready to file": {
           "HSN":"HSN",
@@ -861,47 +870,199 @@ def fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet):
                 st.error(f"{nan_count} transactions do not have Supplier's GSTIN and multiple GSTINs are presnt in other transactions. Please fill and re-upload.")
                 st.stop()
 
-# Streamlit app
+def process_uploaded_files(uploaded_files):
+    processed_files = []
+    for file in uploaded_files:
+        if isinstance(file, tuple):  # Combined Meesho file
+            file_name, file_content = file
+            file_obj = io.BytesIO(file_content.getvalue())
+            file_obj.name = file_name
+            processed_files.append(file_obj)
+        else:  # Original UploadedFile
+            if file.name.endswith('.csv'):
+                processed_data = convert_csv_to_excel(file)
+                processed_file = io.BytesIO(processed_data)
+                processed_file.name = file.name.replace('.csv', '.xlsx')
+                processed_files.append(processed_file)
+            else:
+                processed_files.append(file)
+    return processed_files
+
+def process_pdf_files(uploaded_files):
+    pdf_files = [file for file in uploaded_files if file.name.lower().endswith('.pdf')]
+    other_files = [file for file in uploaded_files if not file.name.lower().endswith('.pdf')]
+    
+    if not pdf_files:
+        return uploaded_files
+
+    url = 'https://ml.vakilsearch.com/llm-doc/extract-invoice-info-test/'
+    headers = {
+        'Authorization': 'Bearer UJ6AzYtILSVKOiSDIsASVzUofvvX2KIK6kTEP4dLV1XQZvhdkw2lHLv8zO8At6XgJYm7d'
+    }
+
+    processed_dataframes = []
+    failed_pdfs = []
+
+    total_pdfs = len(pdf_files)
+    processed_pdfs = 0
+    successful_pdfs = 0
+
+    # Create placeholders for the counters
+    counter_placeholder = st.empty()
+    progress_bar = st.progress(0)
+
+    for pdf_file in pdf_files:
+        response = requests.post(
+            url,
+            headers=headers,
+            files={'document': pdf_file}
+        )
+
+        processed_pdfs += 1
+
+        if response.status_code == 200:
+            data = response.json()
+            
+            invoice_data = {
+                "invoice_number": data.get("invoice_number"),
+                "invoice_date": data.get("invoice_date"),
+                "due_date": data.get("due_date"),
+                "terms": data.get("terms"),
+                "place_of_supply": data.get("place_of_supply"),
+                "bill_to_name": data.get("bill_to", {}).get("name"),
+                "bill_to_address": data.get("bill_to", {}).get("address"),
+                "sub_total": data.get("totals", {}).get("sub_total"),
+                "cgst_total": data.get("totals", {}).get("cgst_total"),
+                "sgst_total": data.get("totals", {}).get("sgst_total"),
+                "rounding": data.get("totals", {}).get("rounding"),
+                "total": data.get("totals", {}).get("total"),
+                "balance_due": data.get("totals", {}).get("balance_due"),
+                "company_name": data.get("company_details", {}).get("name"),
+                "company_address": data.get("company_details", {}).get("address"),
+                "company_gstin": data.get("company_details", {}).get("gstin"),
+            }
+
+            invoice_df = pd.DataFrame([invoice_data])
+            items_df = pd.json_normalize(data, 'items')
+
+            if check_accuracy(invoice_df, items_df):
+                processed_dataframes.append(items_df)
+                successful_pdfs += 1
+            else:
+                failed_pdfs.append(pdf_file)
+        else:
+            failed_pdfs.append(pdf_file)
+
+        # Update the counter and progress bar
+        counter_placeholder.text(f"Processed: {processed_pdfs}/{total_pdfs} | Successful: {successful_pdfs} | Failed: {len(failed_pdfs)}")
+        progress_bar.progress(processed_pdfs / total_pdfs)
+
+    if processed_dataframes:
+        final_df = pd.concat(processed_dataframes, ignore_index=True)
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            final_df.to_excel(writer, index=False)
+        excel_buffer.seek(0)
+        
+        new_file = io.BytesIO(excel_buffer.getvalue())
+        new_file.name = "processed_pdf_data.xlsx"
+        other_files.append(new_file)
+
+    if failed_pdfs:
+        st.warning(f"{len(failed_pdfs)} PDFs failed processing. Click below to download them.")
+        
+        # Create a BytesIO object to hold the ZIP file
+        zip_buffer = io.BytesIO()
+        
+        # Create a ZipFile object
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for i, pdf in enumerate(failed_pdfs):
+                # Write each failed PDF to the ZIP file with a unique name
+                zip_file.writestr(f"failed_pdf_{i+1}.pdf", pdf.getvalue())
+        
+        # Reset the buffer's position to the beginning
+        zip_buffer.seek(0)
+        
+        # Offer the ZIP file for download
+        st.download_button(
+            label="Download Failed PDFs",
+            data=zip_buffer,
+            file_name="failed_pdfs.zip",
+            mime="application/zip"
+        )
+
+    # Final update to the counter
+    counter_placeholder.text(f"Final Results - Processed: {processed_pdfs}/{total_pdfs} | Successful: {successful_pdfs} | Failed: {len(failed_pdfs)}")
+    progress_bar.progress(1.0)
+
+    return other_files
+
+def check_accuracy(df_invoice, df_items):
+    df_items['item_total'] = round(df_items['quantity'] * df_items['rate'], 2)
+    sub_total_amount = round(df_items['item_total'].sum(), 2)
+    sum_total_amount = round(df_items['amount'].sum(), 2)
+    sum_cgst_amount = round(df_items['cgst_amount'].sum(), 2)
+    sum_sgst_amount = round(df_items['sgst_amount'].sum(), 2)
+    
+    invoice_total = round(df_invoice.at[0, 'total'], 2)
+    rounding_adjustment = round(df_invoice.at[0, 'rounding'], 2)
+    sub_total = round(df_invoice.at[0, 'sub_total'], 2)
+    cgst_total = round(df_invoice.at[0, 'cgst_total'], 2)
+    sgst_total = round(df_invoice.at[0, 'sgst_total'], 2)
+    
+    invoice_total_check = round(abs((invoice_total - rounding_adjustment) - sum_total_amount), 2) <= 0.01
+    sub_total_check = round(abs(sub_total - sub_total_amount), 2) <= 0.01
+    cgst_total_check = round(abs(cgst_total - sum_cgst_amount), 2) <= 0.01
+    sgst_total_check = round(abs(sgst_total - sum_sgst_amount), 2) <= 0.01
+    
+    return all([invoice_total_check, sub_total_check, cgst_total_check, sgst_total_check])
+
 def main():
     st.title("GST FILINGS AUTOMATION")
-    
-    uploaded_files = st.file_uploader("Choose Excel or CSV files", accept_multiple_files=True, type=['xlsx', 'xls', 'csv'])
-    
+
+    if 'uploaded_files' not in st.session_state:
+        st.session_state.uploaded_files = None
+    if 'processed_data' not in st.session_state:
+        st.session_state.processed_data = None
+    if 'all_dataframes' not in st.session_state:
+        st.session_state.all_dataframes = []
+
+    uploaded_files = st.file_uploader("Choose Excel, CSV, or PDF files", accept_multiple_files=True, type=['xlsx', 'xls', 'csv', 'pdf'])
+
     if uploaded_files:
-        uploaded_files = process_meesho_files(uploaded_files)
+        st.session_state.uploaded_files = uploaded_files
 
-        processed_files = []
-        for file in uploaded_files:
-            if isinstance(file, tuple):  # Combined Meesho file
-                file_name, file_content = file
-                file_obj = io.BytesIO(file_content.getvalue())
-                file_obj.name = file_name
-                processed_files.append(file_obj)
-            else:  # Original UploadedFile
-                if file.name.endswith('.csv'):
-                    processed_data = convert_csv_to_excel(file)
-                    processed_file = io.BytesIO(processed_data)
-                    processed_file.name = file.name.replace('.csv', '.xlsx')
-                    processed_files.append(processed_file)
-                else:
-                    processed_files.append(file)
-
-        all_dataframes = []
-        for uploaded_file in processed_files:
-            st.write(f"Processing: {uploaded_file.name}")
+    if st.button("Process Files"):
+        if st.session_state.uploaded_files:
+            # Process PDF files first
+            st.session_state.uploaded_files = process_pdf_files(st.session_state.uploaded_files)
             
+            # Then process Meesho files
+            st.session_state.uploaded_files = process_meesho_files(st.session_state.uploaded_files)
+            
+            # Finally, process all remaining files
+            st.session_state.processed_data = process_uploaded_files(st.session_state.uploaded_files)
+            st.success("All files processed successfully!")
+        else:
+            st.error("Please upload files before processing.")
+
+    if st.session_state.processed_data:
+        for uploaded_file in st.session_state.processed_data:
+            st.write(f"Processing: {uploaded_file.name}")
+
             if uploaded_file.name.endswith(('.xlsx', '.xls')):
                 excel_file = pd.ExcelFile(uploaded_file)
                 sheet_names = excel_file.sheet_names
                 selected_sheets = st.multiselect(f"Select relevant sheets from {uploaded_file.name}", sheet_names)
 
                 unique_counter_for_key_names = 0
-                
+
                 for sheet in selected_sheets:
                     unique_counter_for_key_names += 1
                     df = excel_file.parse(sheet)
+                    st.dataframe(df)
                     is_known_source = st.checkbox(f"Is {sheet} from a known format?", key=f"{uploaded_file.name}_{sheet}_known", value=True)
-                    
+
                     if is_known_source:
                         source = st.selectbox("Select the format", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
                         df = select_columns_from_known_source(df, needed_columns, source)
@@ -909,10 +1070,9 @@ def main():
                     else:
                         df = select_columns_from_unknown_source(df, needed_columns, uploaded_file.name, sheet)
                         df = fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet)
-                    
+
                     if not df.empty:
                         df = format_place_of_supply(df)
-
                         df = fill_missing_values(df)
                         df = create_place_of_origin_column(df)
                         df = fill_place_of_supply_with_place_of_origin(df)
@@ -923,74 +1083,36 @@ def main():
                         cgst_tax_amount = df[df['Place Of Supply'] == df['place_of_origin']]['Tax amount'].sum()/2
                         sgst_tax_amount = df[df['Place Of Supply'] == df['place_of_origin']]['Tax amount'].sum()/2
 
-                        st.title(f'Summary of {sheet} for TCS')
-                        # Assuming the variables are already calculated
+                        st.subheader(f'Summary of {sheet} for TCS')
                         summary_data = {
                             "Taxable Value": [taxable_value],
                             "IGST Amount": [igst_tax_amount],
                             "CGST Amount": [cgst_tax_amount],
                             "SGST Amount": [sgst_tax_amount]
                         }
-
-                        # Convert the data into a DataFrame
                         summary_df = pd.DataFrame(summary_data)
                         st.table(summary_df)
 
-                        all_dataframes.append(df)
+                        st.session_state.all_dataframes.append(df)
 
-        if all_dataframes:
-            main_df = pd.concat(all_dataframes)
+        if st.session_state.all_dataframes:
+            main_df = pd.concat(st.session_state.all_dataframes)
             main_df.reset_index(drop=True, inplace=True)
-
-            # print(main_df)
-            # st.write(main_df)
-            # print('main_df')
-            
-            # customer_state_code = st.selectbox("Select the state code of the supplier", 
-            #                                    [state['code'] for state in state_codes])
-            
-            # main_df = fill_missing_values(main_df)
-            # main_df = create_place_of_origin_column(main_df, customer_state_code)
-            # main_df = fill_place_of_supply_with_place_of_origin(main_df)
             main_df = categorise_transactions(main_df)
 
-
-            # Function to parse dates with mixed formats
-            def parse_date(date, user_month):
-                if pd.isna(date):
-                    return None  # Return None for missing values
-                try:
-                    parsed_date = parse(str(date), dayfirst=False)  # Parse assuming month/day/year
-                except ValueError:
-                    parsed_date = parse(str(date), dayfirst=True)   # Parse assuming day/month/year
-                
-                if parsed_date.month == user_month:
-                    return parsed_date
-                else:
-                    # Swap day and month if the user input doesn't match
-                    try:
-                        corrected_date = parsed_date.replace(day=parsed_date.month, month=user_month)
-                        return corrected_date
-                    except ValueError:
-                        return None
-
-
-            # Dropdown to select the month
             month_names = ["January", "February", "March", "April", "May", "June", 
                         "July", "August", "September", "October", "November", "December"]
             current_month = pd.Timestamp.now().month
-            previous_month = (current_month - 2) % 12  # Adjusted to select the previous month by default
+            previous_month = (current_month - 2) % 12
             user_month = st.selectbox("Select the month of the dates in your data:", month_names, index=previous_month)
-            user_month_index = month_names.index(user_month) + 1  # Convert month name to month number
+            user_month_index = month_names.index(user_month) + 1
 
-            # Apply the function to the 'Invoice Date' column
-            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse_date(x, user_month_index))
+            # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse(x, user_month_index))
+            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse(x, user_month_index) if pd.notna(x) else None)
 
-            # Change the format to '01-Jul-2024', handling NaT values gracefully
             main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
 
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
-
             main_df['GSTIN/UIN of Supplier'] = main_df['GSTIN/UIN of Supplier'].astype(str).apply(lambda x: x[:15])
             main_df['GSTIN/UIN of Recipient'] = main_df['GSTIN/UIN of Recipient'].astype(str).apply(lambda x: x[:15])
 
@@ -998,15 +1120,15 @@ def main():
             main_df['Invoice Type'] = 'Regular B2B'
 
             unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
-            
+
             for gstin in unique_gstins:
                 st.write(f"### Summary for GSTIN: {gstin}")
                 gstin_df = main_df[main_df['GSTIN/UIN of Supplier'] == gstin]
-                
+
                 b2b = create_b2b_dataframe(gstin_df)
                 b2cs = create_b2cs_dataframe(gstin_df)
                 b2cl = create_b2cl_dataframe(gstin_df)
-                
+
                 if not b2b.empty:
                     st.download_button(
                         label=f"Download B2B Output for {gstin}",
@@ -1016,7 +1138,7 @@ def main():
                     )
                 else:
                     st.write(f"No B2B transactions to download for GSTIN: {gstin}.")
-                
+
                 if not b2cs.empty:
                     st.download_button(
                         label=f"Download B2CS Output for {gstin}",
@@ -1026,7 +1148,7 @@ def main():
                     )
                 else:
                     st.write(f"No B2CS transactions to download for GSTIN: {gstin}.")
-                
+
                 if not b2cl.empty:
                     st.download_button(
                         label=f"Download B2CL Output for {gstin}",
@@ -1036,10 +1158,11 @@ def main():
                     )
                 else:
                     st.write(f"No B2CL transactions to download for GSTIN: {gstin}.")
-        else:
-            st.error("No valid data was processed from the uploaded files. Please check your input and try again.")
-    else:
-        st.write("Please upload Excel files to process.")
+
+    if st.button("Clear Inputs"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.success("All inputs cleared. You can start over.")
 
 if __name__ == "__main__":
     main()
