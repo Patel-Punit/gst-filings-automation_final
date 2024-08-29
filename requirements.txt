@@ -3,8 +3,3 @@ pandas
 numpy
 python-dateutil
 requests
-os
-io
-tempfile
-dateutil.parser
-zipfile
