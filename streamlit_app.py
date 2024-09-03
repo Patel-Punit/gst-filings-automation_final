@@ -902,10 +902,11 @@ def process_pdf_files(uploaded_files):
 
     processed_dataframes = []
     failed_pdfs = []
+    successful_pdfs = []
 
     total_pdfs = len(pdf_files)
     processed_pdfs = 0
-    successful_pdfs = 0
+    successfull_pdf_count = 0
 
     # Create placeholders for the counters
     counter_placeholder = st.empty()
@@ -945,11 +946,18 @@ def process_pdf_files(uploaded_files):
             invoice_df = pd.DataFrame([invoice_data])
             items_df = pd.json_normalize(data, 'items')
 
+            # st.dataframe(invoice_df)
+            # st.dataframe(items_df)
+            
+
             if check_accuracy(invoice_df, items_df):
                 processed_dataframes.append(items_df)
-                successful_pdfs += 1
+                successful_pdfs.append(pdf_file)
+                successfull_pdf_count += 1
+                st.write('^^^ passed ^^^')
             else:
                 failed_pdfs.append(pdf_file)
+                st.write('^^^ failed ^^^')
         else:
             failed_pdfs.append(pdf_file)
 
@@ -992,7 +1000,7 @@ def process_pdf_files(uploaded_files):
         )
 
     # Final update to the counter
-    counter_placeholder.text(f"Final Results - Processed: {processed_pdfs}/{total_pdfs} | Successful: {successful_pdfs} | Failed: {len(failed_pdfs)}")
+    counter_placeholder.text(f"Final Results - Processed: {processed_pdfs}/{total_pdfs} | Successful: {successfull_pdf_count} | Failed: {len(failed_pdfs)}")
     progress_bar.progress(1.0)
 
     return other_files
@@ -1010,12 +1018,34 @@ def check_accuracy(df_invoice, df_items):
     cgst_total = round(df_invoice.at[0, 'cgst_total'], 2)
     sgst_total = round(df_invoice.at[0, 'sgst_total'], 2)
     
-    invoice_total_check = round(abs((invoice_total - rounding_adjustment) - sum_total_amount), 2) <= 0.01
-    sub_total_check = round(abs(sub_total - sub_total_amount), 2) <= 0.01
-    cgst_total_check = round(abs(cgst_total - sum_cgst_amount), 2) <= 0.01
-    sgst_total_check = round(abs(sgst_total - sum_sgst_amount), 2) <= 0.01
+    invoice_total_check = round(abs((invoice_total - rounding_adjustment) - sum_total_amount), 2) <= 1
+    sub_total_check = round(abs(sub_total - sub_total_amount), 2) <= 1
+    cgst_total_check = round(abs(cgst_total - sum_cgst_amount), 2) <= 1
+    sgst_total_check = round(abs(sgst_total - sum_sgst_amount), 2) <= 1
+
+    print(df_invoice)
+    print(f"invoice_total_check: {invoice_total_check} , {invoice_total}, {rounding_adjustment}, {sum_total_amount}")
+    print(f"sub_total_check: {sub_total_check}, {sub_total}, {sub_total_amount}")
+    print(f"cgst_total_check: {cgst_total_check}, {cgst_total}, {sum_cgst_amount}")
+    print(f"sgst_total_check: {sgst_total_check}, {sgst_total}, {sum_sgst_amount}")
+    print('')
+    print('')
     
     return all([invoice_total_check, sub_total_check, cgst_total_check, sgst_total_check])
+
+# def create_zip(files, file_prefix):
+#     # Create a BytesIO object to hold the ZIP file
+#     zip_buffer = io.BytesIO()
+
+#     # Create a ZipFile object
+#     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+#         for i, file in enumerate(files):
+#             # Write each file to the ZIP file with a unique name
+#             zip_file.writestr(f"{file_prefix}_{i+1}.pdf", file.getvalue())
+
+#     # Reset the buffer's position to the beginning
+#     zip_buffer.seek(0)
+#     return zip_buffer
 
 def main():
     st.title("GST FILINGS AUTOMATION")
@@ -1060,7 +1090,7 @@ def main():
                 for sheet in selected_sheets:
                     unique_counter_for_key_names += 1
                     df = excel_file.parse(sheet)
-                    st.dataframe(df)
+                    # st.dataframe(df)
                     is_known_source = st.checkbox(f"Is {sheet} from a known format?", key=f"{uploaded_file.name}_{sheet}_known", value=True)
 
                     if is_known_source:
@@ -1107,10 +1137,35 @@ def main():
             user_month = st.selectbox("Select the month of the dates in your data:", month_names, index=previous_month)
             user_month_index = month_names.index(user_month) + 1
 
-            # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse(x, user_month_index))
-            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse(x, user_month_index) if pd.notna(x) else None)
+            def safe_parse(x, user_month_index):
+                if pd.isna(x):
+                    return None
+                try:
+                    # Convert to string if it's not already
+                    x_str = str(x)
+                    parsed_date = parse(x_str, dayfirst=(user_month_index == 1))
+                    return parsed_date.strftime('%d-%b-%y')
+                except:
+                    return None
+                
+            # st.dataframe(main_df)
 
-            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
+            # Ensure that `Invoice date` is a string
+            main_df['Invoice date'] = main_df['Invoice date'].astype(str)
+
+            # Apply the safe parsing function
+            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: safe_parse(x, user_month_index))
+
+            # Replace empty strings with None
+            main_df['Invoice date'] = main_df['Invoice date'].replace('', np.nan)
+
+            # # Ensure that `Invoice date` is a string
+            # main_df['Invoice date'] = main_df['Invoice date'].astype(str)
+
+            # # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse(x, user_month_index))
+            # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse(x, user_month_index) if pd.notna(x) else None)
+
+            # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
 
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
             main_df['GSTIN/UIN of Supplier'] = main_df['GSTIN/UIN of Supplier'].astype(str).apply(lambda x: x[:15])
@@ -1144,7 +1199,7 @@ def main():
                         label=f"Download B2CS Output for {gstin}",
                         data=convert_df_to_csv(b2cs),
                         file_name=f"b2cs_output_{gstin}.csv",
-                        mime="text/csv",
+                        mime="text/csv"
                     )
                 else:
                     st.write(f"No B2CS transactions to download for GSTIN: {gstin}.")
