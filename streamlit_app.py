@@ -8,6 +8,8 @@ import tempfile
 from dateutil.parser import parse
 import requests
 import zipfile
+from datetime import datetime
+import re
 
 # Define necessary data structures
 known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)',
@@ -946,8 +948,8 @@ def process_pdf_files(uploaded_files):
             invoice_df = pd.DataFrame([invoice_data])
             items_df = pd.json_normalize(data, 'items')
 
-            # st.dataframe(invoice_df)
-            # st.dataframe(items_df)
+            st.dataframe(invoice_df)
+            st.dataframe(items_df)
             
 
             if check_accuracy(invoice_df, items_df):
@@ -1047,6 +1049,21 @@ def check_accuracy(df_invoice, df_items):
 #     zip_buffer.seek(0)
 #     return zip_buffer
 
+def custom_date_parse(date_string, user_month_index):
+    # First, try to parse the date
+    parsed_date = parse(date_string)
+    
+    # If the parsed month matches the user's input, return the parsed date
+    if parsed_date.month == user_month_index:
+        return parsed_date
+    else:
+        # If the months don't match, swap day and month
+        day, month, year = parsed_date.month, parsed_date.day, parsed_date.year
+        
+        # Create a new datetime object with swapped day and month
+        return datetime(year, month, day)
+
+
 def main():
     st.title("GST FILINGS AUTOMATION")
 
@@ -1137,27 +1154,38 @@ def main():
             user_month = st.selectbox("Select the month of the dates in your data:", month_names, index=previous_month)
             user_month_index = month_names.index(user_month) + 1
 
-            def safe_parse(x, user_month_index):
-                if pd.isna(x):
-                    return None
-                try:
-                    # Convert to string if it's not already
-                    x_str = str(x)
-                    parsed_date = parse(x_str, dayfirst=(user_month_index == 1))
-                    return parsed_date.strftime('%d-%b-%y')
-                except:
-                    return None
+            # def safe_parse(x, user_month_index):
+            #     if pd.isna(x):
+            #         return None
+            #     try:
+            #         # Convert to string if it's not already
+            #         x_str = str(x)
+            #         parsed_date = parse(x_str, dayfirst=(user_month_index == 1))
+            #         return parsed_date.strftime('%d-%b-%y')
+            #     except:
+            #         return None
                 
             # st.dataframe(main_df)
+
+            # # Ensure that `Invoice date` is a string
+            # main_df['Invoice date'] = main_df['Invoice date'].astype(str)
+
+            # # Apply the safe parsing function
+            # main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: safe_parse(x, user_month_index))
+
+            # # Replace empty strings with None
+            # main_df['Invoice date'] = main_df['Invoice date'].replace('', np.nan)
 
             # Ensure that `Invoice date` is a string
             main_df['Invoice date'] = main_df['Invoice date'].astype(str)
 
-            # Apply the safe parsing function
-            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: safe_parse(x, user_month_index))
+            # Apply the custom parsing function
+            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: custom_date_parse(x, user_month_index) if pd.notna(x) else None)
 
-            # Replace empty strings with None
-            main_df['Invoice date'] = main_df['Invoice date'].replace('', np.nan)
+            # Format the date as required
+            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
+
+            # ------------------------
 
             # # Ensure that `Invoice date` is a string
             # main_df['Invoice date'] = main_df['Invoice date'].astype(str)
