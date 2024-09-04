@@ -1107,7 +1107,7 @@ def main():
                 for sheet in selected_sheets:
                     unique_counter_for_key_names += 1
                     df = excel_file.parse(sheet)
-                    # st.dataframe(df)
+                    st.dataframe(df)
                     is_known_source = st.checkbox(f"Is {sheet} from a known format?", key=f"{uploaded_file.name}_{sheet}_known", value=True)
 
                     if is_known_source:
