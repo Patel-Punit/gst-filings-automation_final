@@ -1,8 +1,7 @@
-streamlit==1.25.0  # Adjust version as per latest stable release
-pandas==1.5.3      # Ensure compatibility with your Python version
-numpy==1.24.0
-python-dateutil==2.8.2
-requests==2.31.0
-openpyxl==3.1.2
-xlsxwriter==3.1.1
-xlrd==2.0.1  # Use this version to avoid deprecation issues with .xls files
+streamlit
+pandas
+numpy
+openpyxl
+xlrd
+watchdog
+xlsxwriter
