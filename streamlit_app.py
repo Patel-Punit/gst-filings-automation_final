@@ -1050,6 +1050,9 @@ def check_accuracy(df_invoice, df_items):
 #     return zip_buffer
 
 def custom_date_parse(date_string, user_month_index):
+    if date_string == 'nan':
+        return None
+
     # First, try to parse the date
     parsed_date = parse(date_string)
     
