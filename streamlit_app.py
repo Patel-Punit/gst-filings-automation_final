@@ -8,7 +8,7 @@ import tempfile
 from dateutil.parser import parse
 
 # Define necessary data structures
-known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
+known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart','Extracted from PDFs']
 
 known_source_relevenat_columns = {
       'Zoho Books B2B,Export Sales Data': {
@@ -73,7 +73,22 @@ known_source_relevenat_columns = {
           'Sgst Tax': 'Sgst Amount',
           'Utgst Tax': 'Ugst Amount'
       },
-    #   'Cgst Amount', 'Sgst Amount', 'Igst Amount', 'Ugst Amount',
+      'Extracted from PDFs': {
+          'gstin_recipient' : 'GSTIN/UIN of Recipient',
+          'gstin_supplier' : 'GSTIN/UIN of Supplier',
+          'invoice_number' : 'Invoice Number',
+          'invoice_date' : 'Invoice date',
+          'final_amount' : 'Invoice Value',
+          'place_of_supply' : 'Place Of Supply',
+          'taxable_value' : 'Taxable Value',
+          'tax_rate' : 'Rate',
+          'cgst_rate' : 'Cgst Rate',
+          'sgst_rate' : 'Sgst Rate',
+          'igst_rate' : 'Igst Rate',
+          'igst_amount': 'Igst Amount',
+          'cgst_amount': 'Cgst Amount',
+          'sgst_amount': 'Sgst Amount'
+      },
       'VS internal format': {
           'gstin' : 'GSTIN/UIN of Recipient',
           'Name of Customer' : 'Receiver Name',
@@ -861,6 +876,34 @@ def fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet):
                 st.error(f"{nan_count} transactions do not have Supplier's GSTIN and multiple GSTINs are presnt in other transactions. Please fill and re-upload.")
                 st.stop()
 
+
+def dynamic_groupby(df, group_columns, agg_columns):
+    # Filter out columns that don't exist in the DataFrame
+    existing_group_columns = [col for col in group_columns if col in df.columns]
+    
+    # Filter out columns with NaN or None values
+    valid_group_columns = [col for col in existing_group_columns if not df[col].isna().any()]
+    
+    # Check if there are any valid grouping columns
+    if not valid_group_columns:
+        print("Warning: No valid grouping columns found. Returning original DataFrame.")
+        return df
+    
+    # Ensure all aggregation columns exist
+    existing_agg_columns = [col for col in agg_columns if col in df.columns]
+    
+    if not existing_agg_columns:
+        print("Warning: No valid aggregation columns found. Grouping without aggregation.")
+        return df.groupby(valid_group_columns).size().reset_index(name='count')
+    
+    # Perform groupby and aggregation
+    result = (df.groupby(valid_group_columns)[existing_agg_columns]
+              .sum()
+              .reset_index())
+    
+    return result
+
+
 # Streamlit app
 def main():
     st.title("GST FILINGS AUTOMATION")
@@ -912,8 +955,20 @@ def main():
                     
                     if not df.empty:
                         df = format_place_of_supply(df)
-
                         df = fill_missing_values(df)
+
+                        if source == 'Extracted from PDFs':
+                            group_columns = ['Invoice Number', 'Invoice date', 'Place Of Supply', 'Rate', 'GSTIN/UIN of Supplier', 'GSTIN/UIN of Recepient']
+                            agg_columns = ['Taxable Value', 'Invoice Value']
+
+                            df = dynamic_groupby(df, group_columns, agg_columns)
+
+                            for col in needed_columns:
+                                if col not in df.columns:
+                                    df[col] = np.nan
+
+                            df = fill_missing_values(df)
+
                         df = create_place_of_origin_column(df)
                         df = fill_place_of_supply_with_place_of_origin(df)
 
@@ -942,16 +997,6 @@ def main():
             main_df = pd.concat(all_dataframes)
             main_df.reset_index(drop=True, inplace=True)
 
-            # print(main_df)
-            # st.write(main_df)
-            # print('main_df')
-            
-            # customer_state_code = st.selectbox("Select the state code of the supplier", 
-            #                                    [state['code'] for state in state_codes])
-            
-            # main_df = fill_missing_values(main_df)
-            # main_df = create_place_of_origin_column(main_df, customer_state_code)
-            # main_df = fill_place_of_supply_with_place_of_origin(main_df)
             main_df = categorise_transactions(main_df)
 
 
