@@ -780,34 +780,50 @@ def convert_csv_to_excel(csv_file):
     return processed_data
 
 def process_meesho_files(uploaded_files):
-    file_names = [file.name for file in uploaded_files]
-    
-    if 'ForwardReports.xlsx' in file_names and 'Reverse.xlsx' in file_names:
-        forward_df = pd.read_excel([file for file in uploaded_files if file.name == 'ForwardReports.xlsx'][0])
-        reverse_df = pd.read_excel([file for file in uploaded_files if file.name == 'Reverse.xlsx'][0])
+    # Filter all forward and reverse files
+    forward_files = [file for file in uploaded_files if file.name.startswith('ForwardReports')]
+    reverse_files = [file for file in uploaded_files if file.name.startswith('Reverse')]
 
-        columns_to_keep = ['gst_rate', 'tcs_taxable_amount', 'end_customer_state_new','gstin']
+    # Ensure that there are both forward and reverse files to process
+    if forward_files and reverse_files:
+        # Concatenate all forward files
+        forward_dfs = [pd.read_excel(file) for file in forward_files]
+        forward_df = pd.concat(forward_dfs, ignore_index=True)
+        
+        # Concatenate all reverse files
+        reverse_dfs = [pd.read_excel(file) for file in reverse_files]
+        reverse_df = pd.concat(reverse_dfs, ignore_index=True)
+        
+        # Select the columns to keep
+        columns_to_keep = ['gst_rate', 'tcs_taxable_amount', 'end_customer_state_new', 'gstin']
         forward_df = forward_df[columns_to_keep]
         reverse_df = reverse_df[columns_to_keep]
 
+        # Multiply tcs_taxable_amount by -1 in the reverse file
         reverse_df['tcs_taxable_amount'] *= -1
 
+        # Combine the forward and reverse dataframes
         combined_df = pd.concat([forward_df, reverse_df], ignore_index=True)
 
+        # Write the combined dataframe to a temporary excel file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
             combined_df.to_excel(tmp.name, index=False, engine='openpyxl')
             tmp_path = tmp.name
 
+        # Read the combined file as bytes for output
         with open(tmp_path, 'rb') as file:
             output = io.BytesIO(file.read())
 
+        # Clean up the temporary file
         os.unlink(tmp_path)
 
-        new_uploaded_files = [file for file in uploaded_files if file.name not in ['ForwardReports.xlsx', 'Reverse.xlsx']]
+        # Replace forward and reverse files with the combined file in the uploaded files list
+        new_uploaded_files = [file for file in uploaded_files if not (file.name.startswith('ForwardReports') or file.name.startswith('Reverse'))]
         new_uploaded_files.append(('MeeshoForwardReverse.xlsx', output))
 
         return new_uploaded_files
     
+    # Return the original files if no forward or reverse files were found
     return uploaded_files
 
 def fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet):
