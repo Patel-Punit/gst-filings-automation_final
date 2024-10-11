@@ -887,17 +887,31 @@ def fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet):
 #     except ValueError:
 #         return None
     
+# def parse_date_with_format(date_string, date_format):
+#     if pd.isna(date_string):
+#         return None
+#     try:
+#         # Check if it's already a datetime object
+#         if isinstance(date_string, datetime.datetime):
+#             return date_string
+#         # Otherwise, try to parse it as a string
+#         return datetime.datetime.strptime(str(date_string).strip(), date_format)
+#     except ValueError:
+#         return None
+
 def parse_date_with_format(date_string, date_format):
-    if pd.isna(date_string):
-        return None
     try:
-        # Check if it's already a datetime object
-        if isinstance(date_string, datetime.datetime):
-            return date_string
-        # Otherwise, try to parse it as a string
-        return datetime.datetime.strptime(str(date_string).strip(), date_format)
+        if date_format == "%d-%b-%Y":
+            # Custom parsing for all %d-%b-%Y formats
+            day, month, year = date_string.split('-')
+            month = month[:3].capitalize()  # Normalize to first 3 letters and capitalize
+            date_string = f"{day}-{month}-{year}"
+        return datetime.strptime(date_string, date_format)
     except ValueError:
-        return None
+        try:
+            return parse(date_string)
+        except ValueError:
+            return pd.NaT
 
 # Streamlit app
 def main():
