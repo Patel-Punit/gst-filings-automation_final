@@ -6,6 +6,8 @@ from io import BytesIO
 import io
 import tempfile
 from dateutil.parser import parse
+import datetime
+from io import BytesIO
 
 # Define necessary data structures
 known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
@@ -860,6 +862,26 @@ def fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet):
                 nan_count = len(df_with_no_gstin)
                 st.error(f"{nan_count} transactions do not have Supplier's GSTIN and multiple GSTINs are presnt in other transactions. Please fill and re-upload.")
                 st.stop()
+            
+# def parse_date_with_format(date_string, date_format):
+#     if pd.isna(date_string):
+#         return None
+#     try:
+#         return datetime.datetime.strptime(str(date_string), date_format)
+#     except ValueError:
+#         return None
+    
+def parse_date_with_format(date_string, date_format):
+    if pd.isna(date_string):
+        return None
+    try:
+        # Check if it's already a datetime object
+        if isinstance(date_string, datetime.datetime):
+            return date_string
+        # Otherwise, try to parse it as a string
+        return datetime.datetime.strptime(str(date_string).strip(), date_format)
+    except ValueError:
+        return None
 
 # Streamlit app
 def main():
@@ -885,6 +907,9 @@ def main():
                     processed_files.append(processed_file)
                 else:
                     processed_files.append(file)
+
+        # Dropdown (selectbox) with two options, "Not QRMP" selected by default
+        is_QRMP = st.checkbox(f"Is QRMP?", value=False)
 
         all_dataframes = []
         for uploaded_file in processed_files:
@@ -936,6 +961,23 @@ def main():
                         summary_df = pd.DataFrame(summary_data)
                         st.table(summary_df)
 
+                        st.write(df['Invoice date'].head(5))
+
+                        if is_QRMP:
+                            # Date format selection
+                            date_format = st.selectbox("Select the date format in your data:", 
+                                                    ["%d-%m-%Y", "%m-%d-%Y", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d-%b-%Y"],key=f"missing_gstin_column_{unique_counter_for_key_names}_{sheet}")
+                            
+                            # Parse dates
+                            df['Invoice date'] = df['Invoice date'].apply(lambda x: parse_date_with_format(x, date_format))
+                            
+                            # Change the format to '01-Jul-2024', handling NaT values gracefully
+                            df['Invoice date'] = df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
+
+                            st.write(df['Invoice date'].head(5))
+
+
+
                         all_dataframes.append(df)
 
         if all_dataframes:
@@ -973,21 +1015,21 @@ def main():
                         return corrected_date
                     except ValueError:
                         return None
+                    
+            if not is_QRMP:
+                # Dropdown to select the month
+                month_names = ["January", "February", "March", "April", "May", "June", 
+                            "July", "August", "September", "October", "November", "December"]
+                current_month = pd.Timestamp.now().month
+                previous_month = (current_month - 2) % 12  # Adjusted to select the previous month by default
+                user_month = st.selectbox("Select the month of the dates in your data:", month_names, index=previous_month)
+                user_month_index = month_names.index(user_month) + 1  # Convert month name to month number
 
+                # Apply the function to the 'Invoice Date' column
+                main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse_date(x, user_month_index))
 
-            # Dropdown to select the month
-            month_names = ["January", "February", "March", "April", "May", "June", 
-                        "July", "August", "September", "October", "November", "December"]
-            current_month = pd.Timestamp.now().month
-            previous_month = (current_month - 2) % 12  # Adjusted to select the previous month by default
-            user_month = st.selectbox("Select the month of the dates in your data:", month_names, index=previous_month)
-            user_month_index = month_names.index(user_month) + 1  # Convert month name to month number
-
-            # Apply the function to the 'Invoice Date' column
-            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: parse_date(x, user_month_index))
-
-            # Change the format to '01-Jul-2024', handling NaT values gracefully
-            main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
+                # Change the format to '01-Jul-2024', handling NaT values gracefully
+                main_df['Invoice date'] = main_df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
 
             main_df['GSTIN/UIN of Supplier'].fillna('supplier gstin not available', inplace=True)
 
