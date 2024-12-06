@@ -9,6 +9,10 @@ from dateutil.parser import parse
 import datetime
 from io import BytesIO
 from datetime import datetime
+import copy
+import time
+import json
+import requests
 
 # Define necessary data structures
 known_sources = ['Zoho Books B2B,Export Sales Data', 'Kithab Sales Report', 'Amazon', 'Flipkart - 7(A)(2)', 'Flipkart - 7(B)(2)', 'Meesho','b2b ready to file format','b2cs ready to file format','VS internal format','Amazon B2B','Vyapaar','Jio Mart']
@@ -449,6 +453,45 @@ def gstin_or_state(df):
     # Check each row and apply the logic
     df['gst_or_state'] = df['Customer GSTIN number/ Place of Supply'].apply(lambda x: 'gst' if integers_in_string(str(x)) > 2 else 'state')
     return df
+
+# This function will convert all the uploaded files into the desired dictionary format
+def convert_uploaded_files(uploaded_files):
+    uploaded_files_dict = {}
+    
+    # Loop through each uploaded file
+    for uploaded_file in uploaded_files:
+        # Read the file content into memory (since Streamlit uploads files as bytes)
+        file_bytes = uploaded_file.read()
+        
+        # Get the file extension and specify the correct engine
+        file_extension = os.path.splitext(uploaded_file.name)[1].lower()  # Get the file extension (.xlsx or .xls)
+
+        if file_extension == '.xlsx':
+            engine = 'openpyxl'
+        elif file_extension == '.xls':
+            engine = 'xlrd'
+        elif uploaded_file.name.endswith('.csv'):
+            # For CSV files, we don't need to specify an engine for pd.read_csv
+            file_dict = pd.read_csv(io.BytesIO(file_bytes)).to_dict(orient='records')
+            uploaded_files_dict[uploaded_file.name] = {'CSV': file_dict}
+            continue
+        else:
+            continue
+        
+        # Read the Excel file with the determined engine
+        xls = pd.ExcelFile(io.BytesIO(file_bytes), engine=engine)
+        
+        file_dict = {}
+        
+        # Loop through each sheet in the current file
+        for sheet_name in xls.sheet_names:
+            # Read sheet into a DataFrame and convert to a dictionary (optional: you can process the data further here)
+            sheet_data = pd.read_excel(xls, sheet_name=sheet_name)
+            file_dict[sheet_name] = sheet_data.to_dict(orient='records')
+        
+        uploaded_files_dict[uploaded_file.name] = file_dict
+    
+    return uploaded_files_dict
 
 def select_columns_from_known_source(df, needed_columns, source):
     if source == 'VS internal format':
@@ -916,9 +959,51 @@ def parse_date_with_format(date_string, date_format):
 
 # Streamlit app
 def main():
+
     st.title("GST FILINGS AUTOMATION")
     
-    uploaded_files = st.file_uploader("Choose Excel or CSV files", accept_multiple_files=True, type=['xlsx', 'xls', 'csv'])
+    upload_file = st.file_uploader("Choose Excel or CSV files", accept_multiple_files=True, type=['xlsx', 'xls', 'csv'])
+
+    if not upload_file:
+        st.session_state.clear()
+
+    sources = set()
+
+    qrmp = None
+
+    if 'uploaded_files_info' not in st.session_state:
+        st.session_state.uploaded_files_info = {}
+
+    first_date = None
+    last_date = None
+    uploaded_files_dict = {}
+    output_files_dict = {}
+
+    uploaded_files = copy.deepcopy(upload_file)
+
+    # Store the current files in a set for comparison
+    current_files_set = {file.name for file in uploaded_files} if uploaded_files else set()
+
+    # If files have been uploaded, store their information and timestamp
+    if uploaded_files:
+        for file in uploaded_files:
+            if file.name not in st.session_state.uploaded_files_info:
+                st.session_state.uploaded_files_info[file.name] = {
+                    "timestamp": time.time()
+                }
+
+    # Remove files from memory that are no longer uploaded
+    uploaded_files_names = {file.name for file in uploaded_files} if uploaded_files else set()
+    files_to_remove = set(st.session_state.uploaded_files_info.keys()) - uploaded_files_names
+
+    for file_name in files_to_remove:
+        del st.session_state.uploaded_files_info[file_name]
+
+
+
+    uploaded_files_copy = copy.deepcopy(uploaded_files)
+
+    uploaded_files_dict = convert_uploaded_files(uploaded_files_copy)
     
     if uploaded_files:
         uploaded_files = process_meesho_files(uploaded_files)
@@ -942,6 +1027,10 @@ def main():
         # Dropdown (selectbox) with two options, "Not QRMP" selected by default
         is_QRMP = st.checkbox(f"Is QRMP?", value=False)
 
+        # if 'is_QRMP' not in st.session_state:
+        #     st.session_state.is_QRMP = st.checkbox(f"Is QRMP?", value=False)
+
+
         all_dataframes = []
         for uploaded_file in processed_files:
             st.write(f"Processing: {uploaded_file.name}")
@@ -960,6 +1049,7 @@ def main():
                     
                     if is_known_source:
                         source = st.selectbox("Select the format", known_sources, key=f"{uploaded_file.name}_{sheet}_source")
+                        sources.add(source)
                         df = select_columns_from_known_source(df, needed_columns, source)
                         df = fill_missing_supplier_gstins(df, unique_counter_for_key_names, sheet)
                     else:
@@ -995,12 +1085,15 @@ def main():
                         st.write(df['Invoice date'].head(5))
 
                         if is_QRMP:
+
+                            qrmp = is_QRMP
+
                             # Date format selection
                             date_format = st.selectbox("Select the date format in your data:", 
                                                     ["%d-%m-%Y", "%m-%d-%Y", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d-%b-%Y"],key=f"missing_gstin_column_{unique_counter_for_key_names}_{sheet}")
                             
                             # Parse dates
-                            df['Invoice date'] = df['Invoice date'].apply(lambda x: parse_date_with_format(x, date_format))
+                            df['Invoice date'] = df['Invoice date'].apply(lambda x: parse_date_with_format(str(x), date_format))
                             
                             # Change the format to '01-Jul-2024', handling NaT values gracefully
                             df['Invoice date'] = df['Invoice date'].apply(lambda x: x.strftime('%d-%b-%y') if pd.notna(x) else None)
@@ -1070,10 +1163,28 @@ def main():
             main_df['Reverse Charge'] = 'N'
             main_df['Invoice Type'] = 'Regular B2B'
 
+            main_df_copy = copy.deepcopy(main_df)
+
+            main_df_copy['Invoice date'] = pd.to_datetime(main_df_copy['Invoice date'])
+
+            first_date = main_df_copy['Invoice date'].min()
+            last_date = main_df_copy['Invoice date'].max()
+
             unique_gstins = main_df['GSTIN/UIN of Supplier'].unique()
+
+            st.session_state.unique_gstins = unique_gstins
+
+            # Initialize session state variable if it doesn't exist
+            if 'button_clicked' not in st.session_state:
+                st.session_state.button_clicked = False
+
+            if 'log_pushed' not in st.session_state:
+                st.session_state.log_pushed = False
+
+            print(st.session_state.log_pushed, 'after initializing')
             
             for gstin in unique_gstins:
-                st.write(f"### Summary for GSTIN: {gstin}")
+                st.write(f"### Files Ready to file for GSTIN: {gstin}")
                 gstin_df = main_df[main_df['GSTIN/UIN of Supplier'] == gstin]
                 
                 b2b = create_b2b_dataframe(gstin_df)
@@ -1081,38 +1192,120 @@ def main():
                 b2cl = create_b2cl_dataframe(gstin_df)
                 
                 if not b2b.empty:
-                    st.download_button(
+                    if st.download_button(
                         label=f"Download B2B Output for {gstin}",
                         data=convert_df_to_csv(b2b),
                         file_name=f"b2b_output_{gstin}.csv",
                         mime="text/csv",
-                    )
+                    ):
+                        st.session_state.button_clicked = True
                 else:
                     st.write(f"No B2B transactions to download for GSTIN: {gstin}.")
                 
                 if not b2cs.empty:
-                    st.download_button(
+                    if st.download_button(
                         label=f"Download B2CS Output for {gstin}",
                         data=convert_df_to_csv(b2cs),
                         file_name=f"b2cs_output_{gstin}.csv",
                         mime="text/csv",
-                    )
+                    ):
+                        st.session_state.button_clicked = True
                 else:
                     st.write(f"No B2CS transactions to download for GSTIN: {gstin}.")
                 
                 if not b2cl.empty:
-                    st.download_button(
+                    if st.download_button(
                         label=f"Download B2CL Output for {gstin}",
                         data=convert_df_to_csv(b2cl),
                         file_name=f"b2cl_output_{gstin}.csv",
                         mime="text/csv",
-                    )
+                    ):
+                        st.session_state.button_clicked = True
+
+            if st.session_state.button_clicked == True:
+                if st.session_state.log_pushed == False:
+
+                    st.session_state.log_pushed = True
+
+                    print('after downloading', st.session_state.log_pushed)
+
+                    if sources and ('uploaded_files_info' in st.session_state) and ('unique_gstins' in st.session_state):
+
+                        GSTIN = ""
+                        for i in st.session_state.unique_gstins:
+                            GSTIN += i
+                            GSTIN += ','
+
+                        def custom_serializer(obj):
+                            if isinstance(obj, pd.Timestamp):
+                                return obj.isoformat()  # Convert Timestamp to ISO 8601 string
+                            # elif isinstance(obj, datetime.datetime):  # Correctly checking for datetime class
+                            #     return obj.isoformat()  # Convert datetime to ISO 8601 string
+                            raise TypeError(f"Type {type(obj)} not serializable")
+
+                        # Your final dictionary
+                        final_dict = {
+                            "timestamp" : int(time.time()),
+                            "GSTIN": GSTIN, 
+                            "InputFileSummary": str(st.session_state.uploaded_files_info),
+                            "StartDate": first_date, 
+                            "EndDate": last_date, 
+                            "IsQRMP": qrmp,
+                            "Sources": str(sources),
+                            "InputFile" : str(uploaded_files_dict)
+                        }
+
+                        # Convert the dictionary to JSON using the custom serializer
+                        payload = json.dumps(final_dict, default=custom_serializer)
+
+                        print(payload)
+
+                        for i in range(20):
+                            print('')
+
+                        # Send the POST request with the JSON payload
+                        url = 'https://crm.vakilsearch.com/es_data_capture'
+
+                        headers = {
+                            'Content-Type': 'application/json'
+                        }
+
+                        # Send the POST request with the payload directly (not as a string)
+                        response = requests.post(url, data=payload, headers=headers)
+
+                        # Output the response
+                        print(response.status_code)
+                        print(response.text)
+
+
+
                 else:
                     st.write(f"No B2CL transactions to download for GSTIN: {gstin}.")
         else:
             st.error("No valid data was processed from the uploaded files. Please check your input and try again.")
     else:
         st.write("Please upload Excel files to process.")
+
+
+
+    # if sources and ('uploaded_files_info' in st.session_state) and ('unique_gstins' in st.session_state):
+
+    #     GSTIN = ""
+
+    #     for i in st.session_state.unique_gstins:
+    #         GSTIN += i
+    #         GSTIN += ','
+
+    #     final_dict = {
+    #         "GSTIN" : GSTIN,
+    #         "UploadedFilesInfo" : st.session_state.uploaded_files_info,
+    #         "first_date" : first_date,
+    #         "last_date" : last_date,
+    #         "qrmp" : qrmp
+    #         # "uploaded_files_dict" : uploaded_files_dict
+    #     }
+
+    #     st.write(final_dict)
 
 if __name__ == "__main__":
     main()
